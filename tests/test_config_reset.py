@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import sys
 from types import SimpleNamespace
@@ -12,7 +13,7 @@ import pytest
 from custom_components.taskmate import storage as storage_module
 from custom_components.taskmate.coord_badges import BUILTIN_CATALOGUE
 from custom_components.taskmate.coordinator import TaskMateCoordinator
-from custom_components.taskmate.models import Child
+from custom_components.taskmate.models import Child, Reward
 from custom_components.taskmate.storage import TaskMateStorage
 
 
@@ -292,3 +293,49 @@ async def test_reset_rejects_simultaneous_reset(hass, monkeypatch):
         await coord.async_reset_config()
 
     coord.storage.async_reset.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reset_waits_for_an_unlock_whose_device_call_is_in_flight(hass, monkeypatch):
+    coord, _ = _coordinator(hass, monkeypatch)
+    coord.storage.set_setting("unlock_allowlist", ["switch.tv"])
+    coord._schedule_revert = MagicMock()
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def turn_on(*_args, **_kwargs):
+        entered.set()
+        await release.wait()
+
+    hass.services.async_call = turn_on
+    start = asyncio.create_task(
+        coord.async_start_unlock(
+            Reward(name="TV time", unlock_entity="switch.tv", unlock_minutes=30), Child(name="Kid")
+        )
+    )
+    await asyncio.wait_for(entered.wait(), timeout=2)
+    try:
+        assert coord.active_unlocks() == []
+        with pytest.raises(ValueError, match="active timed reward unlocks"):
+            await coord.async_reset_config()
+        coord.storage.async_reset.assert_not_awaited()
+    finally:
+        release.set()
+        await start
+    assert len(coord.active_unlocks()) == 1
+    coord._schedule_revert.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("retired", [False, True])
+async def test_old_approval_cannot_start_a_device_unlock_after_reset(hass, monkeypatch, retired):
+    coord, _ = _coordinator(hass, monkeypatch)
+    coord.storage.set_setting("unlock_allowlist", ["switch.tv"])
+    if retired:
+        coord.storage._retired_data = {}
+    else:
+        coord._reset_in_progress = True
+    result = await coord.async_start_unlock(
+        Reward(name="TV time", unlock_entity="switch.tv", unlock_minutes=30), Child(name="Kid")
+    )
+    assert result is None
+    hass.services.async_call.assert_not_awaited()

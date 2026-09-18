@@ -91,6 +91,18 @@ class UnlocksMixin:
         self.storage.set_setting("active_unlocks", unlocks)
 
     async def async_start_unlock(self, reward, child) -> dict[str, Any] | None:
+        """Start an unlock only while its owning integration remains active."""
+        if getattr(self, "_reset_in_progress", False) is True or getattr(self.storage, "is_retired", False) is True:
+            return None
+        # Reset must not discard an unlock while turn_on is awaiting the
+        # service call and its persisted auto-revert record does not exist yet.
+        self._unlock_starts_in_progress = getattr(self, "_unlock_starts_in_progress", 0) + 1
+        try:
+            return await self._async_start_unlock(reward, child)
+        finally:
+            self._unlock_starts_in_progress -= 1
+
+    async def _async_start_unlock(self, reward, child) -> dict[str, Any] | None:
         """Turn on a reward's entity and schedule the revert. Returns the record.
 
         Returns None (and logs) rather than raising when the reward has no
