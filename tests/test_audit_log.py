@@ -110,6 +110,7 @@ def _hass_with(coord):
 @pytest.mark.asyncio
 async def test_wrapper_audits_mutation():
     coord = object.__new__(TaskMateCoordinator)
+    coord.storage = MagicMock(is_retired=False)
     coord.async_record_audit = AsyncMock()
     coord.get_chore = MagicMock(return_value=None)
     coord.get_child = MagicMock(return_value=None)
@@ -128,6 +129,7 @@ async def test_wrapper_audits_mutation():
 @pytest.mark.asyncio
 async def test_wrapper_skips_readonly():
     coord = object.__new__(TaskMateCoordinator)
+    coord.storage = MagicMock(is_retired=False)
     coord.async_record_audit = AsyncMock()
 
     @ws._admin_only
@@ -141,6 +143,7 @@ async def test_wrapper_skips_readonly():
 @pytest.mark.asyncio
 async def test_wrapper_does_not_audit_on_handler_error():
     coord = object.__new__(TaskMateCoordinator)
+    coord.storage = MagicMock(is_retired=False)
     coord.async_record_audit = AsyncMock()
 
     @ws._admin_only
