@@ -1,4 +1,12 @@
 {
+  "panel.reset_title": "Alle TaskMate-Daten zurücksetzen",
+  "panel.reset_hint": "Löscht alle TaskMate-Profile, Aufgaben, Belohnungen, Punktestände, Verlaufsdaten und Einstellungen. Die Home-Assistant-Integration bleibt installiert.",
+  "panel.reset_media_hint": "Die JSON-Sicherung enthält keine hochgeladenen Medien. Aufgabenbilder und Sounds bleiben auf dem Datenträger; nicht mehr verknüpfte Nachweisfotos können bei der regelmäßigen Bereinigung gelöscht werden.",
+  "panel.reset_button": "Sichern und zurücksetzen…",
+  "panel.reset_busy": "Bitte warten…",
+  "panel.reset_confirm": "Prüfe zuerst, ob {filename} heruntergeladen wurde. Dadurch werden alle TaskMate-Profile, Aufgaben, Belohnungen, Punktestände, Verlaufsdaten und Einstellungen dauerhaft gelöscht. Gib RESET TASKMATE ein, um fortzufahren.",
+  "panel.reset_mismatch": "Zurücksetzen abgebrochen: Gib genau RESET TASKMATE ein. Es wurde nichts geändert.",
+  "panel.reset_done": "TaskMate-Daten zurückgesetzt. Du kannst die Einrichtung erneut starten.",
   "child.tap_to_undo": "Zum Rückgängigmachen tippen",
   "common.design.field_label": "Kartendesign",
   "common.design.use_global": "Globale Vorgabe verwenden",

@@ -202,6 +202,7 @@ WS_REJECT_SWAP: Final = "taskmate/reject_swap"
 # Backup / restore
 WS_CONFIG_EXPORT: Final = "taskmate/config/export"
 WS_CONFIG_IMPORT: Final = "taskmate/config/import"
+WS_CONFIG_RESET: Final = "taskmate/config/reset"
 
 # Read-only / audit-management commands that should NOT themselves be audited.
 # Everything else routed through @_admin_only mutates state and is logged.
@@ -216,6 +217,7 @@ _AUDIT_EXCLUDE: Final = {
     WS_AUDIT_LIST,
     WS_AUDIT_CLEAR,
     WS_CONFIG_EXPORT,
+    WS_CONFIG_RESET,  # The reset also clears the audit log and reloads the coordinator.
     WS_SCHEDULED_LIST,
     WS_REPORT_FAIRNESS,
     WS_REPORT_FRICTION,
@@ -275,6 +277,16 @@ def _admin_only(handler):
         coordinator = _get_coordinator(hass)
         if not coordinator:
             connection.send_error(msg["id"], "no_coordinator", "TaskMate not initialised")
+            return
+        if getattr(coordinator, "_reset_in_progress", False) is True:
+            connection.send_error(msg["id"], "reset_in_progress", "TaskMate is resetting; please wait")
+            return
+        if getattr(coordinator.storage, "is_retired", False) is True:
+            connection.send_error(
+                msg["id"],
+                "reload_required",
+                "TaskMate data was reset. Reload TaskMate from Settings > Devices & services or restart Home Assistant.",
+            )
             return
         try:
             await handler(hass, connection, msg, coordinator)
@@ -2745,6 +2757,23 @@ async def _ws_config_import(hass, connection, msg, coordinator):
     connection.send_result(msg["id"], {"imported": True})
 
 
+_CONFIG_RESET_SCHEMA = {
+    vol.Required("type"): WS_CONFIG_RESET,
+    vol.Required("confirmation"): "RESET TASKMATE",
+}
+
+
+@websocket_api.websocket_command(_CONFIG_RESET_SCHEMA)
+@websocket_api.async_response
+@_admin_only
+async def _ws_config_reset(hass, connection, msg, coordinator):
+    # Validate here too so every entry path requires an explicit confirmation.
+    if msg.get("confirmation") != "RESET TASKMATE":
+        raise ValueError("Type RESET TASKMATE to confirm deleting all TaskMate data")
+    await coordinator.async_reset_config()
+    connection.send_result(msg["id"], {"reset": True})
+
+
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
@@ -2779,6 +2808,7 @@ _COMMANDS = (
     _ws_reject_swap,
     _ws_config_export,
     _ws_config_import,
+    _ws_config_reset,
     _ws_add_reward,
     _ws_update_reward,
     _ws_remove_reward,

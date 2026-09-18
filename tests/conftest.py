@@ -78,7 +78,7 @@ _ha_coordinator.CoordinatorEntity = FakeCoordinatorEntity
 class FakeStore:
     """In-memory Store substitute that avoids the filesystem."""
 
-    def __init__(self, hass, version, key):
+    def __init__(self, hass, version, key, **kwargs):
         self._data = None
 
     async def async_load(self):

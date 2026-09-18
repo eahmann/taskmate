@@ -1,4 +1,12 @@
 {
+  "panel.reset_title": "Repor todos os dados do TaskMate",
+  "panel.reset_hint": "Elimina todos os perfis, tarefas, recompensas, saldos, histórico e definições do TaskMate. A integração do Home Assistant permanece instalada.",
+  "panel.reset_media_hint": "A cópia de segurança JSON não inclui os ficheiros multimédia carregados. As imagens das tarefas e os sons permanecem no disco; as fotografias de prova que já não estão associadas a tarefas podem ser eliminadas durante a limpeza periódica.",
+  "panel.reset_button": "Criar cópia de segurança e repor…",
+  "panel.reset_busy": "Aguarde…",
+  "panel.reset_confirm": "Primeiro, confirme que {filename} foi transferido. Esta ação elimina permanentemente todos os perfis, tarefas, recompensas, saldos, histórico e definições do TaskMate. Escreva RESET TASKMATE para continuar.",
+  "panel.reset_mismatch": "Reposição cancelada: escreva exatamente RESET TASKMATE. Nada foi alterado.",
+  "panel.reset_done": "Os dados do TaskMate foram repostos. Pode iniciar a configuração novamente.",
   "child.tap_to_undo": "Toque para desfazer",
   "common.design.field_label": "Design do cartão",
   "common.design.use_global": "Usar predefinição global",
