@@ -1457,6 +1457,10 @@ class TaskMateStorage:
         for comp in self._data.get("completions", []):
             if not isinstance(comp, dict):
                 continue
+            # Preserve None/missing for pre-snapshot completions; zero is a
+            # real submitted award and must not trigger legacy recalculation.
+            if comp.get("submitted_points") is not None:
+                comp["submitted_points"] = max(0, int(_finite_number(comp["submitted_points"], 0)))
             url = comp.get("photo_url")
             if url and not is_taskmate_photo_url(url):
                 _LOGGER.warning(

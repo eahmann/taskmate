@@ -89,4 +89,4 @@ def test_no_approval_chore_evaluates_challenges():
 
     run(coord.async_complete_chore("c2", "kid"))
 
-    coord._async_evaluate_challenges.assert_awaited_once_with("kid")
+    coord._async_evaluate_challenges.assert_awaited_once_with("kid", deferred_notifications=[])

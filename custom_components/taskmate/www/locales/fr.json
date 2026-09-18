@@ -1,4 +1,6 @@
 {
+  "activity.reason_pool_refund_funding_changed": "Remboursement de la cagnotte (financement de la récompense modifié) : {name}",
+  "activity.reason_pool_refund_assignment_changed": "Remboursement de la cagnotte (attribution de la récompense modifiée) : {name}",
   "panel.reset_title": "Réinitialiser toutes les données TaskMate",
   "panel.reset_hint": "Supprime tous les profils, tâches, récompenses, soldes, historiques et paramètres TaskMate. L’intégration Home Assistant reste installée.",
   "panel.reset_media_hint": "La sauvegarde JSON ne contient pas les médias importés. Les images des tâches et les sons restent sur le disque ; les photos de preuve qui ne sont plus référencées peuvent être supprimées lors du nettoyage régulier.",

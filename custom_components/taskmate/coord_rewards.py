@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.util import dt as dt_util
 
-from .models import PointsTransaction, PoolAllocation, Reward, RewardClaim
+from .models import Child, PointsTransaction, PoolAllocation, Reward, RewardClaim
 from .timewindow import has_window, is_within_window
 
 if TYPE_CHECKING:
@@ -110,6 +110,38 @@ class RewardsMixin:
         # Jackpots are always pool-mode (#552); keep stored data consistent.
         if reward.is_jackpot:
             reward.pool_enabled = True
+        cancelled_claim_ids = []
+        if old:
+            claims = self.storage.get_reward_claims()
+            if reward.cost != old.cost:
+                # Older claims did not record their paid price. Freeze the
+                # last known price before this edit can rewrite their history.
+                for claim in claims:
+                    if claim.reward_id == reward.id and claim.approved and claim.approved_cost is None:
+                        claim.approved_cost = old.cost
+                        self.storage.update_reward_claim(claim)
+
+            funding_changed = reward.is_jackpot != old.is_jackpot or (old.pool_enabled and not reward.pool_enabled)
+            assignments_changed = reward.assigned_to != old.assigned_to
+            if funding_changed:
+                self._refund_all_pool_allocations(reward, "Pool refund (reward funding changed)")
+            elif assignments_changed:
+                # Refund excluded savers before trimming a reduced price, so
+                # their deposits cannot displace the remaining participants'.
+                for allocation in self.storage.get_pool_allocations():
+                    if allocation.reward_id == reward.id and not self._reward_is_for_child(reward, allocation.child_id):
+                        self._apply_pool_refund(
+                            allocation, allocation.allocated_points, reward, "Pool refund (reward assignment changed)"
+                        )
+            if funding_changed or assignments_changed:
+                for claim in claims:
+                    if (
+                        claim.reward_id == reward.id
+                        and not claim.approved
+                        and (funding_changed or not self._reward_is_for_child(reward, claim.child_id))
+                    ):
+                        self.storage.remove_reward_claim(claim.id)
+                        cancelled_claim_ids.append(claim.id)
         self.storage.update_reward(reward)
         if old and reward.cost < old.cost:
             self._refund_pool_excess(reward, "Pool refund (reward cost reduced)")
@@ -123,6 +155,9 @@ class RewardsMixin:
             self._refund_all_pool_allocations(reward, reason)
         await self.storage.async_save()
         await self.async_refresh()
+        if getattr(self, "notifications", None):
+            for claim_id in cancelled_claim_ids:
+                await self.notifications.clear_approval("pending_reward_claim", claim_id)
 
     async def async_remove_reward(self, reward_id: str) -> None:
         """Remove a reward and clean up any pending claims and pool allocations referencing it."""
@@ -256,15 +291,8 @@ class RewardsMixin:
             )
         )
 
-    async def async_claim_reward(self, reward_id: str, child_id: str) -> RewardClaim:
-        """Child claims a reward — creates a pending claim awaiting parent approval.
-
-        Two modes are supported:
-          * Wallet mode (default): requires child.points (minus committed) to cover cost
-          * Pool mode: if pool allocations exist for this (child, reward) and they fill the
-            reward's cost, the claim is a "redeem" — no wallet check needed. For jackpot
-            rewards the pool total across all contributing children must reach the cost.
-        """
+    def _validate_reward_claim(self, reward_id: str, child_id: str) -> tuple[Reward, Child]:
+        """Check claim eligibility without mutation, also used by reward buttons."""
         reward = self.get_reward(reward_id)
         if not reward:
             raise ValueError(f"Reward {reward_id} not found")
@@ -333,6 +361,19 @@ class RewardsMixin:
             if available_points < effective_cost:
                 raise ValueError(f"Not enough points. Need {effective_cost}, have {available_points} available")
 
+        return reward, child
+
+    async def async_claim_reward(self, reward_id: str, child_id: str) -> RewardClaim:
+        """Child claims a reward — creates a pending claim awaiting parent approval.
+
+        Two modes are supported:
+          * Wallet mode (default): requires child.points (minus committed) to cover cost
+          * Pool mode: if pool allocations exist for this (child, reward) and they fill the
+            reward's cost, the claim is a "redeem" — no wallet check needed. For jackpot
+            rewards the pool total across all contributing children must reach the cost.
+        """
+        reward, child = self._validate_reward_claim(reward_id, child_id)
+
         claim = RewardClaim(
             reward_id=reward_id,
             child_id=child_id,
@@ -381,7 +422,7 @@ class RewardsMixin:
                 continue
             when = claim.approved_at or claim.claimed_at
             if when and dt_util.as_local(when).date() >= start:
-                total += reward_cost.get(claim.reward_id, 0)
+                total += claim.approved_cost if claim.approved_cost is not None else reward_cost.get(claim.reward_id, 0)
         return total
 
     def _enforce_spend_cap(self, child_id: str, cost: int) -> None:
@@ -482,6 +523,7 @@ class RewardsMixin:
 
                 claim.approved = True
                 claim.approved_at = dt_util.now()
+                claim.approved_cost = effective_cost
                 self.storage.update_reward_claim(claim)
                 # Older versions let each participant queue a claim against
                 # the same pool. Remove those duplicates before yielding so
@@ -526,6 +568,11 @@ class RewardsMixin:
     async def async_reject_reward(self, claim_id: str) -> None:
         """Reject a reward claim — no refund needed as points were never deducted."""
         claim = next((c for c in self.storage.get_reward_claims() if c.id == claim_id), None)
+        if claim is None or claim.approved:
+            # Another parent may have already reviewed a stale dashboard or
+            # notification action. Rejection cannot undo an approved purchase
+            # or erase its history while leaving its points and stock spent.
+            return
         self.storage.remove_reward_claim(claim_id)
         await self.storage.async_save()
         await self.async_refresh()

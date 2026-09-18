@@ -657,7 +657,7 @@ def _build_recent_transactions(common: dict, limit: int = 20) -> list[dict]:
                 "reward_id": rc.reward_id,
                 "reward_name": reward.name,
                 "reward_icon": reward.icon or "mdi:gift",
-                "points": -reward.cost,
+                "points": -(rc.approved_cost if rc.approved and rc.approved_cost is not None else reward.cost),
                 "approved": rc.approved,
                 "created_at": timestamp.isoformat() if hasattr(timestamp, "isoformat") else str(timestamp),
             }

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from calendar import monthrange
 from datetime import date, datetime
+from functools import partial
 from typing import TYPE_CHECKING
 
 from homeassistant.util import dt as dt_util
@@ -869,20 +870,21 @@ class ChoresMixin:
             completed_at=now,
             approved=auto_approve,
             points_awarded=effective_points if auto_approve else 0,
+            submitted_points=effective_points,
             photo_url=photo_url or "",
             note=note,
             suggested_points=suggested_points,
         )
 
-        # Record the completion before awarding anything. Awarding can suspend
-        # (a level-up or streak milestone sends a notification), and the
-        # daily-limit check above counts stored completions — so with the write
-        # last, two calls that arrive together could both pass the check and
-        # both be paid. Writing the marker first closes that window.
+        # Reserve the daily quota before awarding. Notification delivery is
+        # deferred until this record and the associated balances are complete.
         self.storage.add_completion(completion)
 
+        award_notifications = []
         if auto_approve:
-            total_awarded = await self._award_points(child, effective_points, chore_id=chore_id)
+            total_awarded = await self._award_points(
+                child, effective_points, chore_id=chore_id, deferred_notifications=award_notifications
+            )
             completion.approved = True
             completion.approved_at = dt_util.now()
             completion.points_awarded = total_awarded
@@ -911,6 +913,15 @@ class ChoresMixin:
             self._check_one_shot_fully_disabled(chore)
             self.storage.update_chore(chore)
 
+        # Complete derived awards before refreshes or notifications can yield
+        # to an undo/reject request. Deferred progression only mutates storage;
+        # this caller saves and delivers its effects with the main completion.
+        if auto_approve:
+            if hasattr(self, "_async_advance_quests"):
+                await self._async_advance_quests(child_id, chore_id, deferred_notifications=award_notifications)
+            if hasattr(self, "_async_evaluate_challenges"):
+                await self._async_evaluate_challenges(child_id, deferred_notifications=award_notifications)
+
         await self.storage.async_save()
 
         # Fire approval notification only if it stays pending
@@ -932,15 +943,7 @@ class ChoresMixin:
         if auto_approve and getattr(self, "badges", None):
             await self.badges.evaluate_for_child(child_id, "manual")
 
-        # Auto-approved completions skip the parent-approval path, so they must
-        # run the same post-approval progression hooks here — otherwise quest
-        # steps and challenges only advance for approval-required chores (#558).
-        if auto_approve:
-            if hasattr(self, "_async_advance_quests"):
-                await self._async_advance_quests(child_id, chore_id)
-            if hasattr(self, "_async_evaluate_challenges"):
-                await self._async_evaluate_challenges(child_id)
-
+        await self._async_deliver_award_notifications(award_notifications)
         return completion
 
     async def async_parent_complete_chore(self, chore_id: str) -> ChoreCompletion:
@@ -972,6 +975,7 @@ class ChoresMixin:
             approved=True,
             approved_at=now,
             points_awarded=0,
+            submitted_points=0,
         )
 
         self.storage.add_completion(completion)
@@ -1058,16 +1062,18 @@ class ChoresMixin:
             completed_at=now,
             approved=not chore.requires_approval,
             points_awarded=subtask.points if not chore.requires_approval else 0,
+            submitted_points=subtask.points,
             bonus_subtask_id=bonus_subtask_id,
         )
 
-        # Written before the award for the same reason as the main completion
-        # path: the duplicate check above reads stored completions, and
-        # awarding can suspend.
+        # Reserve the bonus before awarding, as on the main completion path.
         self.storage.add_completion(completion)
 
+        award_notifications = []
         if not chore.requires_approval:
-            total_awarded = await self._award_points(child, subtask.points, skip_streak=True)
+            total_awarded = await self._award_points(
+                child, subtask.points, skip_streak=True, deferred_notifications=award_notifications
+            )
             completion.approved = True
             completion.approved_at = dt_util.now()
             completion.points_awarded = total_awarded
@@ -1080,6 +1086,7 @@ class ChoresMixin:
             )
 
         await self.async_refresh()
+        await self._async_deliver_award_notifications(award_notifications)
         return completion
 
     async def async_approve_chore(self, completion_id: str, refresh: bool = True, points: int | None = None) -> None:
@@ -1093,8 +1100,8 @@ class ChoresMixin:
         worth (#832) — needed for open-ended submissions, useful for any chore.
         It replaces the chore's *base* points, so the streak and level
         multipliers ``_award_points`` applies still ride on top exactly as they
-        would for an ordinary approval. ``None`` means "use the chore's value"
-        and leaves the existing behaviour untouched.
+        would for an ordinary approval. ``None`` uses the saved submission
+        value, falling back to the chore's value for legacy completions.
         """
         completions = self.storage.get_completions()
         for completion in completions:
@@ -1111,7 +1118,11 @@ class ChoresMixin:
                 if chore and child:
                     comp_date = dt_util.as_local(completion.completed_at).date()
                     is_bonus = bool(completion.bonus_subtask_id)
-                    if is_bonus:
+                    if completion.submitted_points is not None:
+                        # Use the award promised at submission, including any
+                        # speed/roulette bonus that may no longer be active.
+                        pts = completion.submitted_points
+                    elif is_bonus:
                         subtask = next((b for b in chore.bonus_subtasks if b.id == completion.bonus_subtask_id), None)
                         pts = subtask.points if subtask else 0
                     elif completion.timed_duration_seconds > 0 and chore.task_type == "timed":
@@ -1138,22 +1149,21 @@ class ChoresMixin:
                                 points,
                                 completion_id,
                             )
-                    # Claim the completion before awarding. The "already
-                    # approved" check above and the award are separated by an
-                    # await that can suspend, so two approvals landing together
-                    # (a double-tap, or Approve All overlapping a single
-                    # approve) could otherwise both get through and pay twice.
+                    # Reserve approval before awarding; notification delivery
+                    # stays deferred until all related bookkeeping is complete.
                     completion.approved = True
                     completion.approved_at = dt_util.now()
                     completion.points_awarded = 0
                     self.storage.update_completion(completion)
 
+                    award_notifications = []
                     total_awarded = await self._award_points(
                         child,
                         pts,
                         completion_date=comp_date,
                         skip_streak=is_bonus,
                         chore_id=completion.chore_id,
+                        deferred_notifications=award_notifications,
                     )
                     completion.points_awarded = total_awarded
                     self.storage.update_completion(completion)
@@ -1162,7 +1172,9 @@ class ChoresMixin:
                     # reviewed (covers single approve AND "approve all", which
                     # reuses this method per completion).
                     if getattr(self, "notifications", None):
-                        await self.notifications.clear_approval("pending_chore_approval", completion_id)
+                        award_notifications.append(
+                            partial(self.notifications.clear_approval, "pending_chore_approval", completion_id)
+                        )
 
                     self.hass.bus.async_fire(
                         "taskmate_chore_approved",
@@ -1181,21 +1193,18 @@ class ChoresMixin:
                         self._check_one_shot_fully_disabled(chore)
                         self.storage.update_chore(chore)
 
-                    await self.storage.async_save()
-                    if refresh:
-                        await self.async_refresh()
-
-                    # Trigger badge evaluation after approval awards points/chore count/streak
-                    if getattr(self, "badges", None):
-                        await self.badges.evaluate_for_child(completion.child_id, "manual")
-
-                    # Advance any chore-chain quests (parent completions only)
+                    # Finish progression before a refresh or badge notification
+                    # can yield to an undo/reject of this approval.
                     if not is_bonus and hasattr(self, "_async_advance_quests"):
-                        await self._async_advance_quests(completion.child_id, completion.chore_id)
+                        await self._async_advance_quests(
+                            completion.child_id, completion.chore_id, deferred_notifications=award_notifications
+                        )
 
                     # Evaluate daily/weekly challenges (parent completions only)
                     if not is_bonus and hasattr(self, "_async_evaluate_challenges"):
-                        await self._async_evaluate_challenges(completion.child_id)
+                        await self._async_evaluate_challenges(
+                            completion.child_id, deferred_notifications=award_notifications
+                        )
 
                     # All-chores-done celebration — fire once per child per day
                     today_iso = dt_util.now().date().isoformat()
@@ -1203,16 +1212,30 @@ class ChoresMixin:
                     flags = self.storage._data.setdefault("all_done_flags", {})
                     if flag_key not in flags and not self.notifications._has_outstanding_chores_today(child.id):
                         flags[flag_key] = True
-                        await self.notifications.fire(
-                            "all_chores_done",
-                            {"child_name": child.name, "child_id": child.id},
+                        award_notifications.append(
+                            partial(
+                                self.notifications.fire,
+                                "all_chores_done",
+                                {"child_name": child.name, "child_id": child.id},
+                            )
                         )
-                        await self._celebrate(
-                            child,
-                            "all_chores_done",
-                            f"{child.name} finished every chore today!",
-                            tier=1,
+                        award_notifications.append(
+                            partial(
+                                self._celebrate,
+                                child,
+                                "all_chores_done",
+                                f"{child.name} finished every chore today!",
+                                tier=1,
+                            )
                         )
+                    await self.storage.async_save()
+                    if refresh:
+                        await self.async_refresh()
+
+                    # Trigger badge evaluation after all completion awards.
+                    if getattr(self, "badges", None):
+                        await self.badges.evaluate_for_child(completion.child_id, "manual")
+                    await self._async_deliver_award_notifications(award_notifications)
                 else:
                     _LOGGER.warning(
                         "Cannot approve completion %s: chore (%s) or child (%s) not found",
@@ -1234,8 +1257,11 @@ class ChoresMixin:
         NOT remove or modify the completion records themselves.
         """
         completion = target_completion
-        if completion.points_awarded > 0:
-            child = self.get_child(completion.child_id)
+        child = self.get_child(completion.child_id)
+        # Zero-point chores still increment the chore count and can advance a
+        # streak. Approval, rather than a positive payout, identifies an award
+        # that needs to be reversed; pending submissions have no awards yet.
+        if completion.approved:
             if child:
                 child.points = max(0, child.points - completion.points_awarded)
                 child.total_points_earned = max(0, child.total_points_earned - completion.points_awarded)
@@ -1249,6 +1275,7 @@ class ChoresMixin:
                     other_same_day = any(
                         c.id != completion.id
                         and c.child_id == completion.child_id
+                        and c.approved
                         and not c.bonus_subtask_id
                         and dt_util.as_local(c.completed_at).date() == reject_date
                         for c in completions
@@ -1261,6 +1288,7 @@ class ChoresMixin:
                                 for c in completions
                                 if c.id != completion.id
                                 and c.child_id == completion.child_id
+                                and c.approved
                                 and not c.bonus_subtask_id
                             ]
                             child.last_completion_date = max(remaining).isoformat() if remaining else None
@@ -1292,8 +1320,6 @@ class ChoresMixin:
                                 )
                             child.streak_milestones_achieved = sorted(d for d in achieved if d <= child.current_streak)
 
-                self.storage.update_child(child)
-
         bonus_completions: list = []
         is_parent = not target_completion.bonus_subtask_id
         if is_parent:
@@ -1310,14 +1336,11 @@ class ChoresMixin:
                 and dt_util.as_local(c.completed_at).date() == comp_date
             ]
             if bonus_completions:
-                child = self.get_child(target_completion.child_id)
                 for bc in bonus_completions:
-                    if bc.points_awarded > 0 and child:
+                    if bc.approved and child:
                         child.points = max(0, child.points - bc.points_awarded)
                         child.total_points_earned = max(0, child.total_points_earned - bc.points_awarded)
                         child.total_chores_completed = max(0, child.total_chores_completed - 1)
-                if child:
-                    self.storage.update_child(child)
 
             # Undo last_completed store so recurrence window resets correctly
             self.storage.undo_last_completed(target_completion.chore_id, target_completion.child_id)
@@ -1329,6 +1352,13 @@ class ChoresMixin:
                     chore.disabled_for.remove(target_completion.child_id)
                 chore.enabled = True
                 self.storage.update_chore(chore)
+
+        if child and (completion.approved or any(bc.approved for bc in bonus_completions)):
+            # Keep the leaderboard and its chart in sync after both the main
+            # award and any cascaded bonus sub-tasks have been reversed.
+            child.career_score = child.total_points_earned - child.total_penalties_received
+            self.storage.update_child(child)
+            self.storage.append_career_score_snapshot(child.id, dt_util.now().date().isoformat(), child.career_score)
 
         return bonus_completions
 

@@ -194,7 +194,7 @@ class ClaimRewardButton(TaskMateBaseButton):
         Pool-mode pending claims are skipped because their cost was already
         deducted from child.points at allocation time.
         """
-        pending_claims = self.coordinator.data.get("pending_reward_claims", [])
+        pending_claims = self.coordinator.storage.get_pending_reward_claims()
         committed = 0
         for c in pending_claims:
             if c.child_id == child_id and not self.coordinator.is_pool_mode_claim(c):
@@ -205,15 +205,12 @@ class ClaimRewardButton(TaskMateBaseButton):
 
     @property
     def available(self) -> bool:
-        """Return if button is available (accounting for committed points)."""
-        child = self.coordinator.get_child(self.child_id)
-        reward = self.coordinator.get_reward(self.reward_id)
-
-        if not child or not reward:
+        """Use the same current eligibility rules as claiming the reward."""
+        try:
+            self.coordinator._validate_reward_claim(self.reward_id, self.child_id)
+        except ValueError:
             return False
-
-        available_points = child.points - self._get_committed_points(child.id)
-        return available_points >= reward.cost
+        return True
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -226,7 +223,14 @@ class ClaimRewardButton(TaskMateBaseButton):
 
         committed = self._get_committed_points(child.id)
         available_points = child.points - committed
-        can_afford = available_points >= reward.cost
+        if reward.is_jackpot:
+            # Jackpot funding belongs to the shared pool, never a wallet.
+            funding = self.coordinator.storage.get_total_allocated_for_reward(reward.id)
+        else:
+            allocation = self.coordinator.storage.get_pool_allocation(child.id, reward.id)
+            # Ordinary rewards can use a full savings jar or the wallet.
+            funding = max(available_points, allocation.allocated_points) if allocation else available_points
+        can_afford = funding >= reward.cost
 
         return {
             "child_id": child.id,
@@ -238,7 +242,7 @@ class ClaimRewardButton(TaskMateBaseButton):
             "committed_points": committed,
             "available_points": available_points,
             "can_afford": can_afford,
-            "points_needed": max(0, reward.cost - available_points),
+            "points_needed": max(0, reward.cost - funding),
         }
 
     async def async_press(self) -> None:

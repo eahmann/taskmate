@@ -10,6 +10,7 @@ resets progress (repeatable quests) or marks the quest complete for that child.
 from __future__ import annotations
 
 import logging
+from functools import partial
 
 from homeassistant.util import dt as dt_util
 
@@ -89,16 +90,18 @@ class QuestsMixin:
         return out
 
     # ── Progression ──────────────────────────────────────────────────────
-    async def _async_advance_quests(self, child_id: str, chore_id: str) -> None:
+    async def _async_advance_quests(self, child_id: str, chore_id: str, *, deferred_notifications=None) -> None:
         """Advance any active quest whose current step is ``chore_id``.
 
         Called after a (non-bonus) chore completion is approved. Persists and
-        refreshes only if a quest actually advanced.
+        refreshes only if a quest actually advanced. With deferred_notifications,
+        the completion caller owns saving, refreshing, and effect delivery.
         """
         child = self.get_child(child_id)
         if not child:
             return
         changed = False
+        notifications = []
         for quest in self.storage.get_quests():
             if not quest.active or not quest.steps:
                 continue
@@ -116,11 +119,15 @@ class QuestsMixin:
             changed = True
 
             if step >= len(quest.steps):
-                await self._complete_quest(quest, child, prog)
+                await self._complete_quest(quest, child, prog, deferred_notifications=notifications)
 
-        if changed:
+        if changed and deferred_notifications is None:
             await self.storage.async_save()
             await self.async_refresh()
+        if deferred_notifications is not None:
+            deferred_notifications.extend(notifications)
+        else:
+            await self._async_deliver_award_notifications(notifications)
 
     async def _async_rewind_quests(self, child_id: str, chore_id: str) -> None:
         """Undo a quest step that a now-reversed completion had advanced.
@@ -186,10 +193,11 @@ class QuestsMixin:
             )
         )
 
-    async def _complete_quest(self, quest: Quest, child, prog: dict) -> None:
+    async def _complete_quest(self, quest: Quest, child, prog: dict, *, deferred_notifications=None) -> None:
         """Award the quest bonus and reset/finalise progress."""
         prog["completed_count"] = int(prog.get("completed_count", 0)) + 1
         prog["last_completed"] = dt_util.now().isoformat()
+        notifications = []
 
         bonus = int(quest.bonus_points or 0)
         if bonus > 0:
@@ -205,7 +213,7 @@ class QuestsMixin:
                 )
             )
             if hasattr(self, "_maybe_level_up"):
-                await self._maybe_level_up(child)
+                await self._maybe_level_up(child, deferred_notifications=notifications)
             self.storage.update_child(child)
 
         self.hass.bus.async_fire(
@@ -220,16 +228,23 @@ class QuestsMixin:
             },
         )
         if hasattr(self, "_celebrate"):
-            await self._celebrate(
-                child,
-                "quest_completed",
-                f"{child.name} completed the quest '{quest.name}'!",
-                tier=3,
-                extra={"quest_id": quest.id, "bonus": bonus},
+            notifications.append(
+                partial(
+                    self._celebrate,
+                    child,
+                    "quest_completed",
+                    f"{child.name} completed the quest '{quest.name}'!",
+                    tier=3,
+                    extra={"quest_id": quest.id, "bonus": bonus},
+                )
             )
 
         # Repeatable quests start over; one-shot quests stay complete.
         if quest.repeatable:
             prog["step"] = 0
         self.storage.set_quest_child_progress(quest.id, child.id, prog)
+        if deferred_notifications is not None:
+            deferred_notifications.extend(notifications)
+        else:
+            await self._async_deliver_award_notifications(notifications)
         _LOGGER.info("Quest '%s' completed by %s (+%d)", quest.name, child.name, bonus)

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
+from functools import partial
 
 from homeassistant.util import dt as dt_util
 
@@ -108,12 +109,13 @@ class ChallengesMixin:
         return out
 
     # ── Evaluation ───────────────────────────────────────────────────────
-    async def _async_evaluate_challenges(self, child_id: str) -> None:
-        """Award any challenge the child has now met for the current period."""
+    async def _async_evaluate_challenges(self, child_id: str, *, deferred_notifications=None) -> None:
+        """Award challenges, leaving save/refresh to a caller deferring effects."""
         child = self.get_child(child_id)
         if not child:
             return
         changed = False
+        notifications = []
         for ch in self.storage.get_challenges():
             if not ch.active or ch.target <= 0:
                 continue
@@ -132,14 +134,19 @@ class ChallengesMixin:
                 continue
             prog["awarded"] = True
             self.storage.set_challenge_child_progress(ch.id, child_id, prog)
-            await self._award_challenge(ch, child)
+            await self._award_challenge(ch, child, deferred_notifications=notifications)
             changed = True
 
-        if changed:
+        if changed and deferred_notifications is None:
             await self.storage.async_save()
             await self.async_refresh()
+        if deferred_notifications is not None:
+            deferred_notifications.extend(notifications)
+        else:
+            await self._async_deliver_award_notifications(notifications)
 
-    async def _award_challenge(self, challenge: Challenge, child) -> None:
+    async def _award_challenge(self, challenge: Challenge, child, *, deferred_notifications=None) -> None:
+        notifications = []
         bonus = int(challenge.bonus_points or 0)
         if bonus > 0:
             child.points += bonus
@@ -154,7 +161,7 @@ class ChallengesMixin:
                 )
             )
             if hasattr(self, "_maybe_level_up"):
-                await self._maybe_level_up(child)
+                await self._maybe_level_up(child, deferred_notifications=notifications)
             self.storage.update_child(child)
 
         self.hass.bus.async_fire(
@@ -170,11 +177,18 @@ class ChallengesMixin:
             },
         )
         if hasattr(self, "_celebrate"):
-            await self._celebrate(
-                child,
-                "challenge_completed",
-                f"{child.name} completed the challenge '{challenge.name}'!",
-                tier=2,
-                extra={"challenge_id": challenge.id, "bonus": bonus},
+            notifications.append(
+                partial(
+                    self._celebrate,
+                    child,
+                    "challenge_completed",
+                    f"{child.name} completed the challenge '{challenge.name}'!",
+                    tier=2,
+                    extra={"challenge_id": challenge.id, "bonus": bonus},
+                )
             )
         _LOGGER.info("Challenge '%s' completed by %s (+%d)", challenge.name, child.name, bonus)
+        if deferred_notifications is not None:
+            deferred_notifications.extend(notifications)
+        else:
+            await self._async_deliver_award_notifications(notifications)

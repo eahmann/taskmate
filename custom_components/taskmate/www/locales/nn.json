@@ -1,4 +1,6 @@
 {
+  "activity.reason_pool_refund_funding_changed": "Refusjon frå sparegrisen (finansiering av premien endra): {name}",
+  "activity.reason_pool_refund_assignment_changed": "Refusjon frå sparegrisen (tildeling av premien endra): {name}",
   "panel.reset_title": "Nullstill alle TaskMate-data",
   "panel.reset_hint": "Slettar alle TaskMate-profilar, oppgåver, premiar, saldoar, historikk og innstillingar. Home Assistant-integrasjonen blir verande installert.",
   "panel.reset_media_hint": "JSON-tryggleikskopien inneheld ikkje opplasta medium. Oppgåvebilete og lydar blir liggjande på disken; provbilete som ikkje lenger er i bruk, kan bli sletta ved vanleg opprydding.",
