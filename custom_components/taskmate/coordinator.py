@@ -313,7 +313,7 @@ class TaskMateCoordinator(
         """
         if getattr(self, "_reset_in_progress", False):
             raise ValueError("TaskMate is already resetting. Wait for it to finish.")
-        if self.active_unlocks():
+        if self.active_unlocks() or getattr(self, "_unlock_starts_in_progress", 0):
             raise ValueError("Wait for active timed reward unlocks to end before resetting TaskMate.")
 
         self._reset_in_progress = True
