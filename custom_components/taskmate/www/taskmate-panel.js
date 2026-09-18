@@ -158,6 +158,7 @@ class TaskMatePanel extends HTMLElement {
     this._state = null;
     this._error = null;
     this._loading = false;
+    this._resetInProgress = false;
     this._timePeriodsDraft = null;  // local edit state for the period editor
     this._vacationDraft = null;     // local edit state for the vacation editor
     this._bulkMode = false;         // chores multi-select mode
@@ -725,6 +726,7 @@ class TaskMatePanel extends HTMLElement {
     if (act === "save-settings") { this._doSaveSettings(); return; }
     if (act === "config-export") { this._doExportConfig(); return; }
     if (act === "config-import") { this.querySelector("[data-role='config-import-file']")?.click(); return; }
+    if (act === "config-reset") { this._doResetConfig(); return; }
     if (act === "ics-show") { this._icsShow(); return; }
     if (act === "ics-regenerate") { this._icsRegenerate(); return; }
     if (act === "ics-copy") { this._icsCopy(); return; }
@@ -2205,20 +2207,57 @@ class TaskMatePanel extends HTMLElement {
   }
 
   // ---- Backup / restore ------------------------------------------------
-  async _doExportConfig() {
+  async _doExportConfig(filename = "taskmate-backup.json") {
     const { ok, err, res } = await this._callWS({ type: "taskmate/config/export" });
-    if (!ok || !res) { this._showToast("err", this._t("panel.toast_save_failed", { error: err })); return; }
+    if (!ok || !res) { this._showToast("err", this._t("panel.toast_save_failed", { error: err })); return false; }
     try {
       const blob = new Blob([JSON.stringify(res, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "taskmate-backup.json";
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
       this._showToast("ok", this._t("panel.backup_exported"));
+      return true;
     } catch (e) {
       this._showToast("err", String(e));
+      return false;
+    }
+  }
+
+  async _doResetConfig() {
+    if (this._resetInProgress) return;
+    this._resetInProgress = true;
+    this._render();
+    try {
+      const filename = `taskmate-before-reset-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+      if (!await this._doExportConfig(filename)) return;
+      // Browsers do not report whether a download was saved. Ask the user to
+      // check the file before sending the destructive request.
+      const confirmation = prompt(this._t("panel.reset_confirm", { filename }));
+      if (confirmation === null) return;
+      if (confirmation !== "RESET TASKMATE") {
+        this._showToast("err", this._t("panel.reset_mismatch"));
+        return;
+      }
+      const { ok, err } = await this._callWS({ type: "taskmate/config/reset", confirmation });
+      this._timePeriodsDraft = null;
+      this._vacationDraft = null;
+      this._icsUrl = null;
+      this._bulkSel.clear();
+      // Clear the old snapshot before _fetchState's loading render, otherwise
+      // the settings editors rehydrate their drafts from pre-reset values.
+      // Refresh even on error: persistence may have succeeded but reload failed.
+      this._state = null;
+      this._notifState = null;
+      this._error = null;
+      await this._fetchState();
+      if (!ok) { this._showToast("err", this._t("panel.toast_save_failed", { error: err })); return; }
+      this._showToast("ok", this._t("panel.reset_done"));
+    } finally {
+      this._resetInProgress = false;
+      this._render();
     }
   }
 
@@ -4789,6 +4828,16 @@ class TaskMatePanel extends HTMLElement {
               <button type="button" class="tm-btn" data-act="config-import"><ha-icon icon="mdi:upload"></ha-icon> ${this._t("panel.backup_import")}</button>
               <input type="file" accept="application/json,.json" data-role="config-import-file" style="display:none">
             </div>
+          </div>
+        </div>
+
+        <div class="tm-section">
+          <div class="tm-section-head"><div><h3>${this._t("panel.reset_title")}</h3><p class="tm-meta">${this._t("panel.reset_hint")}</p></div></div>
+          <div class="tm-section-body">
+            <p class="tm-meta">${this._t("panel.reset_media_hint")}</p>
+            <button type="button" class="tm-btn tm-btn-danger" data-act="config-reset" ${this._resetInProgress ? "disabled" : ""}>
+              <ha-icon icon="mdi:delete-forever"></ha-icon> ${this._t(this._resetInProgress ? "panel.reset_busy" : "panel.reset_button")}
+            </button>
           </div>
         </div>
 

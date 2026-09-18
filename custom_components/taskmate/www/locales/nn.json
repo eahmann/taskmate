@@ -1,4 +1,12 @@
 {
+  "panel.reset_title": "Nullstill alle TaskMate-data",
+  "panel.reset_hint": "Slettar alle TaskMate-profilar, oppgåver, premiar, saldoar, historikk og innstillingar. Home Assistant-integrasjonen blir verande installert.",
+  "panel.reset_media_hint": "JSON-tryggleikskopien inneheld ikkje opplasta medium. Oppgåvebilete og lydar blir liggjande på disken; provbilete som ikkje lenger er i bruk, kan bli sletta ved vanleg opprydding.",
+  "panel.reset_button": "Tryggleikskopier og nullstill…",
+  "panel.reset_busy": "Vent litt…",
+  "panel.reset_confirm": "Kontroller først at {filename} vart lasta ned. Dette slettar alle TaskMate-profilar, oppgåver, premiar, saldoar, historikk og innstillingar permanent. Skriv RESET TASKMATE for å halde fram.",
+  "panel.reset_mismatch": "Nullstilling avbroten: Skriv nøyaktig RESET TASKMATE. Ingenting vart endra.",
+  "panel.reset_done": "TaskMate-dataa er nullstilte. Du kan starte oppsettet på nytt.",
   "child.tap_to_undo": "Trykk for å angre",
   "common.design.field_label": "Kortdesign",
   "common.design.use_global": "Bruk global standard",

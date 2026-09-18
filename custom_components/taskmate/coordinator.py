@@ -304,6 +304,61 @@ class TaskMateCoordinator(
         await self.storage.async_save()
         await self.async_refresh()
 
+    async def async_reset_config(self) -> None:
+        """Reset TaskMate data and reload its existing integration entry.
+
+        The storage write succeeds before runtime state or entities are touched.
+        Uploads remain on disk because the downloadable JSON backup references
+        them, but does not contain their bytes.
+        """
+        if getattr(self, "_reset_in_progress", False):
+            raise ValueError("TaskMate is already resetting. Wait for it to finish.")
+        if self.active_unlocks():
+            raise ValueError("Wait for active timed reward unlocks to end before resetting TaskMate.")
+
+        self._reset_in_progress = True
+        try:
+            try:
+                await self.storage.async_reset()
+            except OSError as err:
+                raise ValueError("Could not save the reset. Existing TaskMate data has been kept.") from err
+
+            try:
+                await self.async_shutdown()
+                self._remove_reset_entities()
+                if not await self.hass.config_entries.async_reload(self.entry_id):
+                    raise RuntimeError("Integration reload returned false")
+            except Exception as err:
+                _LOGGER.exception("TaskMate data was reset, but integration reload failed")
+                raise ValueError(
+                    "TaskMate data was reset, but the integration could not reload. "
+                    "Reload TaskMate from Settings > Devices & services or restart Home Assistant."
+                ) from err
+        finally:
+            self._reset_in_progress = False
+
+    def _remove_reset_entities(self) -> None:
+        """Remove child entities, including orphans from earlier deletions.
+
+        Global sensors/settings retain their registry identity for dashboards.
+        Reload resets the platforms' remembered child IDs, so a later restore
+        can recreate entities for the same children.
+        """
+        from homeassistant.helpers import entity_registry as er
+
+        registry = er.async_get(self.hass)
+        prefix = f"{self.entry_id}_"
+        dynamic_suffixes = ("_points", "_stats", "_badges", "_calendar", "_todo", "_complete", "_claim")
+        for entity in er.async_entries_for_config_entry(registry, self.entry_id):
+            unique_id = entity.unique_id
+            if (
+                entity.platform == DOMAIN
+                and unique_id.startswith(prefix)
+                and unique_id != f"{prefix}overall_stats"
+                and unique_id.endswith(dynamic_suffixes)
+            ):
+                registry.async_remove(entity.entity_id)
+
     # ── Admin audit log ──────────────────────────────────────────────────
     async def async_record_audit(self, user_id: str, user_name: str, action: str, target: str = "") -> None:
         """Record an admin config action in the audit log and persist it."""

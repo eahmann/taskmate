@@ -231,6 +231,12 @@ def _get_coordinator(hass: HomeAssistant) -> TaskMateCoordinator | None:
     """Get the first available coordinator."""
     for key, value in hass.data.get(DOMAIN, {}).items():
         if key != SERVICES_REGISTERED and isinstance(value, TaskMateCoordinator):
+            if getattr(value, "_reset_in_progress", False) is True:
+                raise ServiceValidationError("TaskMate is resetting; please wait")
+            if getattr(value.storage, "is_retired", False) is True:
+                raise ServiceValidationError(
+                    "TaskMate data was reset. Reload TaskMate from Settings > Devices & services or restart Home Assistant."
+                )
             return value
     return None
 

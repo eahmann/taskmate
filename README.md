@@ -67,6 +67,14 @@ Requires **Home Assistant 2024.7+** and a current browser (Chrome, Firefox, Edge
 
 For manual installation and the first-run walkthrough, see [Installation](https://github.com/tempus2016/taskmate/wiki/Installation) and [Getting Started](https://github.com/tempus2016/taskmate/wiki/Getting-Started).
 
+### Clear a test setup before going live
+
+As a Home Assistant administrator, open **TaskMate → Settings → Reset all TaskMate data → Back up and reset…**. Check that the timestamped JSON backup downloaded, then type **RESET TASKMATE** to confirm. Cancelling leaves your setup unchanged.
+
+Reset clears profiles, chores, rewards, balances, allocations, activity, custom configuration, and settings. It restores the built-in defaults and reloads the existing integration. Home Assistant users, dashboards, and automations remain; cards or automations targeting deleted children may need reconfiguring. Active timed reward unlocks must finish before resetting.
+
+The JSON backup contains data and media references, not uploaded files. Chore images and sounds stay on disk, while unreferenced evidence photos may be removed by routine cleanup. Keep a full Home Assistant backup if you need to preserve uploaded media as well. To undo a reset, use **Restore backup** and reload the integration as prompted.
+
 ---
 
 ## What you get

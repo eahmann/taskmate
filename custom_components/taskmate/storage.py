@@ -73,33 +73,19 @@ class TaskMateStorage:
         """Initialize storage."""
         self.hass = hass
         self.entry_id = entry_id
-        self._store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}.{entry_id}")
+        self._store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}.{entry_id}", atomic_writes=True)
         self._data: dict[str, Any] = {}
         # Monotonic counter bumped on every persisted mutation (PERF-2). Lets the
         # coordinator skip rebuilding its data snapshot when nothing has changed.
         self._data_version = 0
+        self._retired_data: dict[str, Any] | None = None
 
     async def async_load(self) -> dict[str, Any]:
         """Load data from storage."""
         data = await self._store.async_load()
         is_fresh = data is None
         if is_fresh:
-            data = {
-                "children": [],
-                "chores": [],
-                "rewards": [],
-                "completions": [],
-                "mandatory_misses": [],
-                "reward_claims": [],
-                "points_transactions": [],
-                "pool_allocations": [],
-                "task_groups": [],
-                "badges": [],
-                "awarded_badges": [],
-                "points_name": "Stars",
-                "points_icon": "mdi:star",
-                "last_completed": {},
-            }
+            data = self._empty_data()
         self._data = data
 
         # Ensure last_completed store exists (migration for existing installs)
@@ -177,6 +163,85 @@ class TaskMateStorage:
         await self._migrate_career_score()
 
         return data
+
+    @staticmethod
+    def _empty_data() -> dict[str, Any]:
+        """Return independent fresh-install collections, without user records."""
+        return {
+            "children": [],
+            "chores": [],
+            "rewards": [],
+            "completions": [],
+            "mandatory_misses": [],
+            "reward_claims": [],
+            "points_transactions": [],
+            "pool_allocations": [],
+            "task_groups": [],
+            "badges": [],
+            "awarded_badges": [],
+            "timed_sessions": [],
+            "career_score_history": {},
+            "templates": [],
+            "chore_display_order": [],
+            "custom_sounds": [],
+            "scheduled_changes": [],
+            "parent_recipients": [],
+            "notification_config": {},
+            "custom_notifications": [],
+            "points_name": "Stars",
+            "points_icon": "mdi:star",
+            "last_completed": {},
+        }
+
+    @property
+    def is_retired(self) -> bool:
+        """Whether this pre-reset storage instance must no longer be used."""
+        return self._retired_data is not None
+
+    async def async_reset(self) -> None:
+        """Persist fresh defaults before discarding any live data.
+
+        Uploaded files are intentionally untouched: JSON exports only contain
+        their references. Replacing the entire dictionary also clears records
+        in optional and future collections instead of relying on a delete list.
+        """
+        import copy
+
+        if self._retired_data is not None:
+            raise ValueError("TaskMate has been reset. Reload the integration before making changes.")
+        fresh = self._empty_data()
+        self._seed_builtin_badges(is_fresh=False, data=fresh)
+        self._run_notifications_migration(data=fresh)
+        fresh.update(
+            {
+                "notifications_migration_done": True,
+                "_pool_semantics_version": 2,
+                "_career_score_initialized": True,
+                # Keep the config entry's old currency from being reapplied.
+                "_initial_setup_done": True,
+            }
+        )
+        before = copy.deepcopy(self._data)
+        version = self.data_version
+        await self._store.async_save(fresh)
+        # HA's Store logs write failures without raising. Verify using a new
+        # Store so a pending save on this instance cannot masquerade as disk
+        # persistence. The successful save invalidates HA's storage read cache.
+        verifier = Store(self.hass, STORAGE_VERSION, f"{STORAGE_KEY}.{self.entry_id}", atomic_writes=True)
+        persisted = await verifier.async_load()
+        if self.data_version != version or self._data != before:
+            # A running action changed storage while the disk write awaited.
+            # Preserve that action rather than silently discard its results.
+            await self._store.async_save(self._data)
+            raise ValueError("TaskMate changed during reset. Wait for current actions to finish and try again.")
+        if persisted != fresh:
+            raise OSError("Could not verify that TaskMate reset data was saved")
+        self._data = copy.deepcopy(fresh)
+        self._data_version = version + 1
+        # In-flight actions may still hold the old coordinator across an await.
+        # They must never save old children/claims back after the reset. Keep an
+        # immutable-for-callers snapshot for any already queued delayed save.
+        self._retired_data = copy.deepcopy(fresh)
 
     async def _migrate_pool_allocations_v2(self) -> None:
         """Migrate beta1 pool allocations to beta2 semantics.
@@ -315,14 +380,23 @@ class TaskMateStorage:
         shutdown; ``async_shutdown`` also forces a flush via ``async_save_now``.
         Use ``async_save_now`` when an immediate on-disk write is required.
         """
+        if getattr(self, "_retired_data", None) is not None:
+            raise ValueError("TaskMate has been reset. Reload the integration before making changes.")
         # Bump synchronously, before any await: a mutation method calls this with
         # no interleaving await after touching _data, so the new version is
         # visible the instant anything else (e.g. the 30 s poll) can run.
         self._data_version = getattr(self, "_data_version", 0) + 1
-        self._store.async_delay_save(lambda: self._data, _SAVE_DEBOUNCE_SECONDS)
+        self._store.async_delay_save(
+            lambda: self._retired_data if getattr(self, "_retired_data", None) is not None else self._data,
+            _SAVE_DEBOUNCE_SECONDS,
+        )
 
     async def async_save_now(self) -> None:
         """Persist data immediately, bypassing the debounce (shutdown/flush)."""
+        # Reset already persisted a clean snapshot. Unloading its old
+        # coordinator must not overwrite it with a stale in-flight mutation.
+        if getattr(self, "_retired_data", None) is not None:
+            return
         self._data_version = getattr(self, "_data_version", 0) + 1
         await self._store.async_save(self._data)
 
@@ -691,7 +765,7 @@ class TaskMateStorage:
                 return True
         return False
 
-    def _seed_builtin_badges(self, *, is_fresh: bool) -> None:
+    def _seed_builtin_badges(self, *, is_fresh: bool, data: dict | None = None) -> None:
         """Seed the built-in badge catalogue.
 
         On fresh install (is_fresh=True): add all built-ins and set the
@@ -702,17 +776,18 @@ class TaskMateStorage:
         """
         from .coord_badges import BUILTIN_CATALOGUE
 
-        existing = self._data.get("badges", [])
+        destination = self._data if data is None else data
+        existing = destination.get("badges", [])
         existing_ids = {b.get("id") for b in existing}
 
         for builtin in BUILTIN_CATALOGUE:
             if builtin.id not in existing_ids:
                 existing.append(builtin.to_dict())
 
-        self._data["badges"] = existing
+        destination["badges"] = existing
 
         if is_fresh:
-            self._data["badges_backfill_pending"] = True
+            destination["badges_backfill_pending"] = True
 
     def _migrate_nav_url_default(self) -> None:
         """Rewrite the broken v5.0.2 notification tap target.
@@ -728,14 +803,15 @@ class TaskMateStorage:
             if isinstance(cfg, dict) and cfg.get("nav_url") == "/taskmate":
                 cfg["nav_url"] = DEFAULT_NOTIFICATION_NAV_URL
 
-    def _run_notifications_migration(self) -> None:
+    def _run_notifications_migration(self, data: dict | None = None) -> None:
         """Seed parent_recipients + notification_config from legacy notify_service.
 
         Idempotent: a guard flag is written by the caller in async_load.
         """
-        legacy = (self._data.get("settings", {}) or {}).get("notify_service", "")
+        destination = self._data if data is None else data
+        legacy = (destination.get("settings", {}) or {}).get("notify_service", "")
         parents: list[dict] = []
-        existing_parents = self._data.setdefault("parent_recipients", [])
+        existing_parents = destination.setdefault("parent_recipients", [])
         existing_services = {r.get("notify_service") for r in existing_parents}
         if legacy and legacy not in existing_services:
             seeded = ParentRecipient(name="Parent", notify_service=legacy)
@@ -746,7 +822,7 @@ class TaskMateStorage:
         # new types OFF (no surprise pings on upgrade).
         defaults_on = {"pending_chore_approval", "pending_reward_claim", "badge_earned"}
         defaults_off = {"bedtime_reminder", "streak_at_risk", "all_chores_done"}
-        nc = self._data.setdefault("notification_config", {})
+        nc = destination.setdefault("notification_config", {})
         seeded_parent_id = parents[0]["id"] if parents else None
 
         for tid in defaults_on:
