@@ -1,4 +1,6 @@
 {
+  "activity.reason_pool_refund_funding_changed": "Refusjon fra sparepotten (finansiering av belønningen endret): {name}",
+  "activity.reason_pool_refund_assignment_changed": "Refusjon fra sparepotten (tildeling av belønningen endret): {name}",
   "panel.reset_title": "Nullstill alle TaskMate-data",
   "panel.reset_hint": "Sletter alle TaskMate-profiler, oppgaver, belønninger, saldoer, historikk og innstillinger. Home Assistant-integrasjonen forblir installert.",
   "panel.reset_media_hint": "JSON-sikkerhetskopien inneholder ikke opplastede medier. Oppgavebilder og lyder blir liggende på disken; bevisbilder som ikke lenger er i bruk, kan bli slettet ved vanlig opprydding.",

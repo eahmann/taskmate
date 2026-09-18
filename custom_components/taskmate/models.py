@@ -712,12 +712,25 @@ class ChoreCompletion:
     timed_duration_seconds: int = 0
     photo_url: str = ""  # optional evidence photo (URL/path) attached at completion
     id: str = field(default_factory=generate_id)
+    # Effective chore/bonus/timer points at submission, before weekend and
+    # streak awards. None identifies legacy records requiring recalculation.
+    submitted_points: int | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ChoreCompletion:
         """Create a ChoreCompletion from a dictionary."""
         completed_at = parse_datetime(data.get("completed_at"))
         approved_at = parse_datetime(data.get("approved_at"))
+        submitted_points = data.get("submitted_points")
+        if submitted_points is not None:
+            try:
+                if isinstance(submitted_points, bool):
+                    raise ValueError("Boolean is not a chore award")
+                submitted_points = int(submitted_points)
+                if submitted_points < 0:
+                    submitted_points = None
+            except (ValueError, TypeError, OverflowError):
+                submitted_points = None
 
         return cls(
             chore_id=data.get("chore_id", ""),
@@ -730,6 +743,7 @@ class ChoreCompletion:
             timed_duration_seconds=data.get("timed_duration_seconds", 0),
             photo_url=data.get("photo_url", ""),
             id=data.get("id") or generate_id(),
+            submitted_points=submitted_points,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -745,6 +759,7 @@ class ChoreCompletion:
             "timed_duration_seconds": self.timed_duration_seconds,
             "photo_url": self.photo_url,
             "id": self.id,
+            "submitted_points": self.submitted_points,
         }
 
 
@@ -807,12 +822,27 @@ class RewardClaim:
     approved: bool = False
     approved_at: datetime | None = None
     id: str = field(default_factory=generate_id)
+    approved_cost: int | float | None = None  # Price paid; None for pending or legacy claims.
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RewardClaim:
         """Create a RewardClaim from a dictionary."""
+        from math import isfinite
+
         claimed_at = parse_datetime(data.get("claimed_at"))
         approved_at = parse_datetime(data.get("approved_at"))
+        approved_cost = data.get("approved_cost")
+        if approved_cost is not None:
+            try:
+                if isinstance(approved_cost, bool):
+                    raise ValueError("Boolean is not a reward price")
+                approved_cost = float(approved_cost)
+                if not isfinite(approved_cost) or approved_cost < 0:
+                    approved_cost = None
+                elif approved_cost.is_integer():
+                    approved_cost = int(approved_cost)
+            except (ValueError, TypeError, OverflowError):
+                approved_cost = None
 
         return cls(
             reward_id=data.get("reward_id", ""),
@@ -821,6 +851,7 @@ class RewardClaim:
             approved=data.get("approved", False),
             approved_at=approved_at,
             id=data.get("id") or generate_id(),
+            approved_cost=approved_cost,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -832,6 +863,7 @@ class RewardClaim:
             "approved": self.approved,
             "approved_at": format_datetime(self.approved_at),
             "id": self.id,
+            "approved_cost": self.approved_cost,
         }
 
 

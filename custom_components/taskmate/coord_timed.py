@@ -128,11 +128,13 @@ class TimedMixin:
             completed_at=now,
             approved=not chore.requires_approval,
             points_awarded=pts if not chore.requires_approval else 0,
+            submitted_points=pts,
             timed_duration_seconds=total_seconds,
         )
 
+        award_notifications = []
         if not chore.requires_approval:
-            total_awarded = await self._award_points(child, pts)
+            total_awarded = await self._award_points(child, pts, deferred_notifications=award_notifications)
             completion.approved = True
             completion.approved_at = dt_util.now()
             completion.points_awarded = total_awarded
@@ -152,6 +154,7 @@ class TimedMixin:
             )
 
         await self.async_refresh()
+        await self._async_deliver_award_notifications(award_notifications)
 
     def _timed_start_allowed(self, chore, child_id: str) -> bool:
         """Assignment/enabled/schedule eligibility for starting a timed task.
@@ -224,6 +227,7 @@ class TimedMixin:
         sessions = self.storage.get_timed_sessions()
         stale = [s for s in sessions if s.session_date != today and s.state in ("running", "paused")]
 
+        award_notifications = []
         for session in stale:
             chore = self.get_chore(session.chore_id)
             child = self.get_child(session.child_id)
@@ -251,10 +255,11 @@ class TimedMixin:
                     completed_at=dt_util.now(),
                     approved=not chore.requires_approval,
                     points_awarded=pts if not chore.requires_approval else 0,
+                    submitted_points=pts,
                     timed_duration_seconds=total_seconds,
                 )
                 if not chore.requires_approval:
-                    total_awarded = await self._award_points(child, pts)
+                    total_awarded = await self._award_points(child, pts, deferred_notifications=award_notifications)
                     completion.approved = True
                     completion.approved_at = dt_util.now()
                     completion.points_awarded = total_awarded
@@ -265,6 +270,7 @@ class TimedMixin:
         if stale:
             await self.storage.async_save()
             await self.async_refresh()
+        await self._async_deliver_award_notifications(award_notifications)
 
     async def _async_auto_stop_capped_sessions(self) -> None:
         """Check running sessions against daily cap and auto-stop if exceeded."""

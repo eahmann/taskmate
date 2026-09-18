@@ -1,4 +1,6 @@
 {
+  "activity.reason_pool_refund_funding_changed": "Pool refund (reward funding changed): {name}",
+  "activity.reason_pool_refund_assignment_changed": "Pool refund (reward assignment changed): {name}",
   "panel.reset_title": "Reset all TaskMate data",
   "panel.reset_hint": "Deletes all TaskMate profiles, chores, rewards, balances, history and settings. The Home Assistant integration remains installed.",
   "panel.reset_media_hint": "The JSON backup does not include uploaded media. Chore images and sounds stay on disk; unreferenced evidence photos may be removed by routine cleanup.",

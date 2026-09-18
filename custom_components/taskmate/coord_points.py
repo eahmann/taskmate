@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import date, timedelta
+from functools import partial
 from typing import TYPE_CHECKING
 
 from homeassistant.util import dt as dt_util
@@ -15,6 +17,10 @@ if TYPE_CHECKING:
     pass
 
 _LOGGER = logging.getLogger(__name__)
+
+# Store callables, not coroutine objects: callers may fail before dispatch, and
+# unstarted notifications must not leak unawaited coroutines in that case.
+AwardNotifications = list[Callable[[], Awaitable[None]]]
 
 
 class PointsMixin:
@@ -238,7 +244,8 @@ class PointsMixin:
         child.points += points
         child.total_points_earned += points
         child.career_score = child.total_points_earned - child.total_penalties_received
-        await self._maybe_level_up(child)
+        notifications: AwardNotifications = []
+        await self._maybe_level_up(child, deferred_notifications=notifications)
         self.storage.update_child(child)
         self.storage.append_career_score_snapshot(child_id, date.today().isoformat(), child.career_score)
         # Log the manual transaction
@@ -256,6 +263,7 @@ class PointsMixin:
         # itself, otherwise we'd recurse back into evaluate_for_child.
         if getattr(self, "badges", None) and not (reason or "").startswith("Badge"):
             await self.badges.evaluate_for_child(child_id, "points_changed")
+        await self._async_deliver_award_notifications(notifications)
 
     async def async_remove_points(self, child_id: str, points: int, reason: str = "") -> None:
         """Remove points from a child (penalty)."""
@@ -426,10 +434,20 @@ class PointsMixin:
             },
         )
 
-    async def _maybe_level_up(self, child) -> None:
+    async def _async_deliver_award_notifications(self, notifications: AwardNotifications) -> None:
+        """Deliver optional effects after bookkeeping; failures never undo awards."""
+        for notify in notifications:
+            try:
+                await notify()
+            except Exception:
+                _LOGGER.warning("Unable to deliver a TaskMate award notification", exc_info=True)
+
+    async def _maybe_level_up(self, child, *, deferred_notifications: AwardNotifications | None = None) -> None:
         """Sync child.level to its XP; fire level-up events on an increase.
 
-        Does not save — the caller persists ``child`` afterwards.
+        Does not save — the caller persists ``child`` afterwards. Mutation
+        callers pass a notification list so this coroutine never suspends until
+        the child and the record authorizing the award have both been stored.
         """
         new = self.level_for_xp(getattr(child, "total_points_earned", 0))
         old = getattr(child, "level", 1) or 1
@@ -438,6 +456,7 @@ class PointsMixin:
         child.level = new
         if new < old:
             return  # earned total dropped (e.g. undo); resync quietly
+        notifications: AwardNotifications = []
         for lvl in range(old + 1, new + 1):
             self.hass.bus.async_fire(
                 "taskmate_level_up",
@@ -449,21 +468,27 @@ class PointsMixin:
                 },
             )
             if getattr(self, "notifications", None):
-                await self.notifications.fire(
-                    "level_up",
-                    {
-                        "child_name": child.name,
-                        "child_id": child.id,
-                        "level": lvl,
-                    },
+                notifications.append(
+                    partial(
+                        self.notifications.fire,
+                        "level_up",
+                        {"child_name": child.name, "child_id": child.id, "level": lvl},
+                    )
                 )
-            await self._celebrate(
-                child,
-                "level_up",
-                f"{child.name} reached level {lvl}!",
-                tier=3 if lvl % 5 == 0 else 2,
-                extra={"level": lvl},
+            notifications.append(
+                partial(
+                    self._celebrate,
+                    child,
+                    "level_up",
+                    f"{child.name} reached level {lvl}!",
+                    tier=3 if lvl % 5 == 0 else 2,
+                    extra={"level": lvl},
+                )
             )
+        if deferred_notifications is not None:
+            deferred_notifications.extend(notifications)
+        else:
+            await self._async_deliver_award_notifications(notifications)
 
     async def async_gift_points(self, from_child_id: str, to_child_id: str, points: int) -> None:
         """Transfer spendable points from one child to another (parent-controlled).
@@ -723,6 +748,8 @@ class PointsMixin:
         completion_date: date | None = None,
         skip_streak: bool = False,
         chore_id: str | None = None,
+        *,
+        deferred_notifications: AwardNotifications | None = None,
     ) -> int:
         """Award points to a child, update streak, and apply bonus systems.
 
@@ -731,6 +758,10 @@ class PointsMixin:
 
         If skip_streak is True, streak tracking is skipped (used for bonus
         sub-task completions where the parent already counted).
+
+        With deferred_notifications, all award mutations complete without
+        suspending. The caller delivers the collected effects after committing
+        its completion record, so approvals/undo cannot see a half-paid award.
         """
         now = dt_util.now()
         today = now.date()
@@ -876,33 +907,44 @@ class PointsMixin:
                 self.storage.add_points_transaction(transaction)
 
         self.storage.append_career_score_snapshot(child.id, effective_date.isoformat(), child.career_score)
-        await self._maybe_level_up(child)
+        notifications: AwardNotifications = []
+        await self._maybe_level_up(child, deferred_notifications=notifications)
         self.storage.update_child(child)
 
         # Notify on each newly reached streak milestone (off by default; opt-in).
         if reached_milestones and getattr(self, "notifications", None):
             points_name = self.storage.get_points_name()
             for days, bonus_pts in reached_milestones:
-                await self.notifications.fire(
-                    "streak_milestone",
-                    {
-                        "child_name": child.name,
-                        "child_id": child.id,
-                        "days": days,
-                        "streak": child.current_streak,
-                        "points": bonus_pts,
-                        "points_name": points_name,
-                    },
+                notifications.append(
+                    partial(
+                        self.notifications.fire,
+                        "streak_milestone",
+                        {
+                            "child_name": child.name,
+                            "child_id": child.id,
+                            "days": days,
+                            "streak": child.current_streak,
+                            "points": bonus_pts,
+                            "points_name": points_name,
+                        },
+                    )
                 )
         # A big streak is a celebration moment too — epic at 30+ days.
         for days, _bonus_pts in reached_milestones:
-            await self._celebrate(
-                child,
-                "streak_milestone",
-                f"{child.name} hit a {days}-day streak!",
-                tier=3 if days >= 30 else 2,
-                extra={"days": days},
+            notifications.append(
+                partial(
+                    self._celebrate,
+                    child,
+                    "streak_milestone",
+                    f"{child.name} hit a {days}-day streak!",
+                    tier=3 if days >= 30 else 2,
+                    extra={"days": days},
+                )
             )
+        if deferred_notifications is not None:
+            deferred_notifications.extend(notifications)
+        else:
+            await self._async_deliver_award_notifications(notifications)
         return total_points
 
     async def async_prune_history(self, days: int = 90) -> None:

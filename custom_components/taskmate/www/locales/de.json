@@ -1,4 +1,6 @@
 {
+  "activity.reason_pool_refund_funding_changed": "Sparguthaben erstattet (Finanzierung der Belohnung geändert): {name}",
+  "activity.reason_pool_refund_assignment_changed": "Sparguthaben erstattet (Zuordnung der Belohnung geändert): {name}",
   "panel.reset_title": "Alle TaskMate-Daten zurücksetzen",
   "panel.reset_hint": "Löscht alle TaskMate-Profile, Aufgaben, Belohnungen, Punktestände, Verlaufsdaten und Einstellungen. Die Home-Assistant-Integration bleibt installiert.",
   "panel.reset_media_hint": "Die JSON-Sicherung enthält keine hochgeladenen Medien. Aufgabenbilder und Sounds bleiben auf dem Datenträger; nicht mehr verknüpfte Nachweisfotos können bei der regelmäßigen Bereinigung gelöscht werden.",
