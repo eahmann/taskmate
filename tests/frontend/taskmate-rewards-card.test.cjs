@@ -33,7 +33,20 @@ vm.runInNewContext(source, {
 });
 const RewardsCard = elements.get('taskmate-rewards-card');
 
-function renderJackpot(cost, allocations, selectedChild = null) {
+function renderReward(reward, children, selectedChild, pendingClaims = []) {
+  const card = new RewardsCard();
+  card.config = { entity: 'sensor.taskmate' };
+  card.hass = { states: {
+    'sensor.taskmate': { attributes: { pending_reward_claims: pendingClaims } },
+  } };
+  card._selectedChildId = selectedChild;
+  return {
+    classic: card._renderRewardRow(reward, 'mdi:star', 'Stars', {}, children),
+    designed: card._designRewardRow(reward, children, 'mdi:star', 'Stars', 'playroom'),
+  };
+}
+
+function renderJackpot(cost, allocations, selectedChild = null, pendingClaims = []) {
   const children = allocations.map((_, index) => ({
     id: `kid${index + 1}`, name: `Kid ${index + 1}`, points: 999,
   }));
@@ -42,14 +55,7 @@ function renderJackpot(cost, allocations, selectedChild = null) {
     pool_allocations: Object.fromEntries(children.map((child, i) => [child.id, allocations[i]])),
     jackpot_pool_total: allocations.reduce((sum, points) => sum + points, 0),
   };
-  const card = new RewardsCard();
-  card.config = {};
-  card.hass = { states: {} };
-  card._selectedChildId = selectedChild;
-  return {
-    classic: card._renderRewardRow(reward, 'mdi:star', 'Stars', {}, children),
-    designed: card._designRewardRow(reward, children, 'mdi:star', 'Stars', 'playroom'),
-  };
+  return renderReward(reward, children, selectedChild, pendingClaims);
 }
 
 function classicSegments(markup) {
@@ -92,4 +98,46 @@ test('switching the selected child preserves both contributions and colors', () 
   assert.deepEqual(classicSegments(second), classicSegments(first));
   assert.match(first, /50\/50/);
   assert.match(second, /50\/50/);
+});
+
+for (const selectedChild of ['kid1', 'kid2']) {
+  test(`a shared jackpot pending claim blocks redemption for ${selectedChild} in every design`, () => {
+    const rows = renderJackpot(50, [40, 10], selectedChild, [
+      { reward_id: 'jackpot', child_id: 'kid1' },
+    ]);
+    for (const [design, markup] of Object.entries(rows)) {
+      assert.match(markup, /rewards\.awaiting_approval/, `${design} shows the shared pending claim`);
+      assert.doesNotMatch(markup, /rewards\.redeem/, `${design} hides redemption while pending`);
+    }
+  });
+
+  test(`an unrelated pending claim leaves the jackpot redeemable for ${selectedChild}`, () => {
+    const rows = renderJackpot(50, [40, 10], selectedChild, [
+      { reward_id: 'another-reward', child_id: selectedChild },
+    ]);
+    for (const [design, markup] of Object.entries(rows)) {
+      assert.match(markup, /rewards\.redeem/, `${design} allows redemption of the funded jackpot`);
+      assert.doesNotMatch(markup, /rewards\.awaiting_approval/, `${design} ignores unrelated claims`);
+    }
+  });
+}
+
+test('ordinary savings jars keep pending claims independent for each child in every design', () => {
+  const children = [
+    { id: 'kid1', name: 'Kid 1', points: 100 },
+    { id: 'kid2', name: 'Kid 2', points: 100 },
+  ];
+  const reward = {
+    id: 'savings', name: 'Savings', cost: 50, pool_enabled: true,
+    pool_allocations: { kid1: 50, kid2: 50 },
+  };
+  const pendingClaims = [{ reward_id: 'savings', child_id: 'kid1' }];
+  const claimantRows = renderReward(reward, children, 'kid1', pendingClaims);
+  const otherChildRows = renderReward(reward, children, 'kid2', pendingClaims);
+  for (const design of Object.keys(claimantRows)) {
+    assert.match(claimantRows[design], /rewards\.awaiting_approval/, `${design} shows the claimant's pending status`);
+    assert.doesNotMatch(claimantRows[design], /rewards\.redeem/, `${design} hides the claimant's redeem button`);
+    assert.match(otherChildRows[design], /rewards\.redeem/, `${design} allows the other child to redeem their own savings`);
+    assert.doesNotMatch(otherChildRows[design], /rewards\.awaiting_approval/, `${design} does not share ordinary pending claims`);
+  }
 });

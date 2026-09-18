@@ -52,16 +52,19 @@ class RewardsMixin:
         return self.storage.get_reward(reward_id)
 
     def is_pool_mode_claim(self, claim: RewardClaim) -> bool:
-        """True if the claim is covered by pool allocations (points already deducted).
+        """True if the claim uses pool funding rather than reserving wallet points.
 
         Pool-mode claims must NOT be counted against a child's spendable balance,
-        because their cost was already removed from child.points at allocation time.
+        because deposits are deducted at allocation time. Jackpots remain pool-only
+        even if a pending claim's funding later changes.
         """
         reward = self.get_reward(claim.reward_id)
         if not reward:
             return False
         if getattr(reward, "is_jackpot", False):
-            return self.storage.get_total_allocated_for_reward(claim.reward_id) >= reward.cost
+            # Jackpots never use a participant's wallet, even if a pending
+            # claim's pool is now underfunded (e.g. after a cost increase).
+            return True
         alloc = self.storage.get_pool_allocation(claim.child_id, claim.reward_id)
         return bool(alloc and alloc.allocated_points >= reward.cost)
 
@@ -283,8 +286,9 @@ class RewardsMixin:
         # reward can never fail it, so without these two guards a child can
         # queue unlimited claims — each one a stored record plus a push to
         # every parent.
-        own_pending = [c for c in self.storage.get_pending_reward_claims() if c.child_id == child_id]
-        if any(c.reward_id == reward_id for c in own_pending):
+        pending_claims = self.storage.get_pending_reward_claims()
+        own_pending = [c for c in pending_claims if c.child_id == child_id]
+        if any(c.reward_id == reward_id and (reward.is_jackpot or c.child_id == child_id) for c in pending_claims):
             raise ValueError(f"A claim for '{reward.name}' is already waiting for approval")
         if len(own_pending) >= _MAX_PENDING_CLAIMS_PER_CHILD:
             raise ValueError("Too many reward claims are already waiting for approval")
@@ -297,8 +301,9 @@ class RewardsMixin:
         pool_filled = False
         if reward.is_jackpot:
             pool_total = self.storage.get_total_allocated_for_reward(reward_id)
-            if pool_total >= effective_cost:
-                pool_filled = True
+            if pool_total < effective_cost:
+                raise ValueError(f"Jackpot pool is not full. Need {effective_cost}, have {pool_total} allocated")
+            pool_filled = True
         else:
             allocation = self.storage.get_pool_allocation(child_id, reward_id)
             if allocation and allocation.allocated_points >= effective_cost:
@@ -308,7 +313,6 @@ class RewardsMixin:
             # Wallet mode: verify child has enough uncommitted points.
             # Pool-mode pending claims already had their cost deducted at allocation time,
             # so they are skipped here to avoid double-counting against the wallet.
-            pending_claims = self.storage.get_pending_reward_claims()
             committed = 0
             for c in pending_claims:
                 if c.child_id == child_id and not self.is_pool_mode_claim(c):
@@ -389,8 +393,9 @@ class RewardsMixin:
         """Approve a reward claim and deduct points from the child.
 
         If a pool allocation exists for this (child, reward) pair with enough points,
-        the deduction consumes the pool allocation first (pool mode). Otherwise the
-        wallet-mode path deducts directly from child.points.
+        the deduction consumes the pool allocation first (pool mode). Jackpots
+        always require a full shared pool; only ordinary rewards can fall back
+        to deducting directly from child.points.
         """
         claims = self.storage.get_reward_claims()
         for claim in claims:
@@ -427,8 +432,11 @@ class RewardsMixin:
                 is_pool_mode = False
                 if reward.is_jackpot:
                     pool_total = self.storage.get_total_allocated_for_reward(claim.reward_id)
-                    if pool_total >= effective_cost:
-                        is_pool_mode = True
+                    if pool_total < effective_cost:
+                        raise ValueError(
+                            f"Jackpot pool is not full. Need {effective_cost}, have {pool_total} allocated"
+                        )
+                    is_pool_mode = True
                 elif pool_alloc and pool_alloc.allocated_points >= effective_cost:
                     is_pool_mode = True
 
@@ -466,12 +474,23 @@ class RewardsMixin:
                 claim.approved = True
                 claim.approved_at = dt_util.now()
                 self.storage.update_reward_claim(claim)
+                # Older versions let each participant queue a claim against
+                # the same pool. Remove those duplicates before yielding so
+                # they cannot spend a later refill or approve concurrently.
+                superseded_claim_ids = []
+                if reward.is_jackpot:
+                    for other in claims:
+                        if other.id != claim.id and other.reward_id == reward.id and not other.approved:
+                            self.storage.remove_reward_claim(other.id)
+                            superseded_claim_ids.append(other.id)
                 await self.storage.async_save()
                 await self.async_refresh()
 
                 # Dismiss the mobile approval push now this claim is reviewed.
                 if getattr(self, "notifications", None):
                     await self.notifications.clear_approval("pending_reward_claim", claim_id)
+                    for superseded_id in superseded_claim_ids:
+                        await self.notifications.clear_approval("pending_reward_claim", superseded_id)
 
                 # Timed unlock (#678): allowlisted entity on, auto-off later.
                 await self.async_start_unlock(reward, child)
