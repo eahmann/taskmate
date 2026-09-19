@@ -54,13 +54,25 @@ class MandatoryMixin:
         return [cur] if cur else []
 
     def _child_completed_today(self, chore_id: str, child_id: str, day: date) -> bool:
+        chore = self.storage.get_chore(chore_id)
+        is_checklist = chore and chore.task_type == "checklist"
+        submitted_steps = set()
         for comp in self.storage.get_completions():
             if comp.chore_id != chore_id or comp.child_id != child_id:
                 continue
-            if comp.bonus_subtask_id:
+            if dt_util.as_local(comp.completed_at).date() != day:
                 continue
-            if dt_util.as_local(comp.completed_at).date() == day:
+            if comp.bonus_subtask_id:
+                if is_checklist:
+                    submitted_steps.add(comp.bonus_subtask_id)
+                continue
+            if not is_checklist or comp.approved:
                 return True
+        if is_checklist:
+            required = {step.id for step in chore.bonus_subtasks}
+            # Pending submissions hold their place at the deadline, just as
+            # they do for an ordinary chore awaiting a parent's review.
+            return bool(required) and required <= submitted_steps
         return False
 
     def _period_has_ended(self, period_id: str, day: date, now: datetime | None = None) -> bool:

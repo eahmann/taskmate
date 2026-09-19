@@ -62,6 +62,14 @@ def test_complete_chore_button_press_dispatches():
     coord.async_complete_chore.assert_awaited_once_with("cho1", "ch1")
 
 
+def test_checklist_parent_button_is_unavailable():
+    child = Child(name="Malia", id="ch1")
+    chore = Chore(name="Morning routine", id="cho1", task_type="checklist")
+    coord = _coord(child=child, chore=chore)
+    btn = CompleteChoreButton(coord, _entry(), child, chore)
+    assert btn.available is False
+
+
 def test_complete_chore_button_icon_fallback_when_chore_gone():
     child = Child(name="Malia", id="ch1")
     chore = Chore(name="Dishes", id="cho1")

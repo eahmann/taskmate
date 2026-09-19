@@ -72,12 +72,16 @@ class ChallengesMixin:
         start, _ = self._period_start_key(scope)
         count = 0
         points = 0
+        checklist_ids = {chore.id for chore in self.storage.get_chores() if chore.task_type == "checklist"}
         for comp in self.storage.get_completions():
-            if comp.child_id != child_id or not comp.approved or comp.bonus_subtask_id:
+            if comp.child_id != child_id or not comp.approved:
                 continue
             if dt_util.as_local(comp.completed_at).date() < start:
                 continue
-            count += 1
+            if comp.bonus_subtask_id and comp.chore_id not in checklist_ids:
+                continue
+            if not comp.bonus_subtask_id:
+                count += 1
             points += comp.points_awarded or 0
         return points if metric == "points" else count
 

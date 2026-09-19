@@ -43,12 +43,13 @@ class TaskMateChildCard extends LitElement {
   }
 
   shouldUpdate(changedProps) {
+    const contextChanged = this._syncCompletionContext();
     if (changedProps.has("hass")) {
       const flashed = this._trackEarnedBadges();
       const relevant = window.__taskmate_hasChanged
         ? window.__taskmate_hasChanged(changedProps.get("hass"), this.hass, this.config?.entity)
         : true;
-      return flashed || relevant;
+      return contextChanged || flashed || relevant;
     }
     return true;
   }
@@ -117,6 +118,22 @@ class TaskMateChildCard extends LitElement {
   _t(key, params) {
     const fn = window.__taskmate_localize;
     return fn ? fn(this.hass, key, params) : key;
+  }
+
+  _syncCompletionContext() {
+    if (!this.hass || !this.config) return false;
+    const day = new Date().toLocaleDateString('en-CA', {
+      timeZone: this.hass.config?.time_zone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
+    const context = JSON.stringify([this.config.entity, this.config.child_id, day]);
+    if (context === this._completionContext) return false;
+    const changed = this._completionContext !== undefined;
+    this._completionContext = context;
+    if (changed) {
+      this._optimisticCompletions = {};
+      this._loading = {};
+    }
+    return changed;
   }
 
   /* Newly-earned badges are detected by diffing this child's badges sensor
@@ -1013,6 +1030,46 @@ class TaskMateChildCard extends LitElement {
       }
       .pre-tile.locked { opacity: 0.4; cursor: default; }
       .pre-tile.loading { opacity: 0.6; }
+
+      /* Required steps stay together in every layout, including picture mode. */
+      .checklist-group {
+        grid-column: 1 / -1; min-width: 0; margin-bottom: 14px; padding: 16px;
+        border: 2px solid var(--tmd-border, var(--divider-color, #e0e0e0));
+        border-radius: var(--tmd-radius, 24px);
+        background: var(--tmd-surface, var(--card-background-color, #fff));
+        color: var(--tmd-text, var(--primary-text-color));
+      }
+      .checklist-group.complete { border-color: var(--tmd-good, #2ecc71); }
+      .checklist-heading { display: flex; align-items: center; gap: 12px; }
+      .checklist-heading .chore-number-badge { flex-shrink: 0; }
+      .checklist-title { font-size: 1.15rem; font-weight: 800; }
+      .checklist-progress, .checklist-note { font-size: .85rem; margin-top: 5px; }
+      .checklist-note { color: var(--tmd-dim, var(--secondary-text-color)); }
+      .checklist-track { display: flex; gap: 5px; margin: 12px 0; }
+      .checklist-track > span { flex: 1; height: 8px; border-radius: 6px; background: var(--tmd-surface-2, #e0e0e0); }
+      .checklist-track > .done { background: var(--tmd-good, #2ecc71); }
+      .checklist-track > .pending { background: var(--tmd-warn, #f1c40f); }
+      .checklist-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+      .checklist-step {
+        display: flex; flex-direction: column; align-items: center; gap: 8px;
+        min-height: 150px; padding: 14px 10px; position: relative; cursor: pointer;
+        border: 2px solid var(--tmd-border, var(--divider-color, #ddd)); border-radius: var(--tmd-radius-sm, 20px);
+        background: var(--tmd-surface-2, #fafafa); color: inherit; font: inherit;
+      }
+      .checklist-step:focus-visible { outline: 3px solid var(--tmd-accent, var(--primary-color)); outline-offset: 3px; }
+      .checklist-step:disabled { cursor: default; }
+      .checklist-step.locked { opacity: .55; }
+      .checklist-step.done { border-color: var(--tmd-good, #2ecc71); }
+      .checklist-step.pending { border-color: var(--tmd-warn, #e6a817); }
+      .checklist-picture ha-icon { --mdc-icon-size: 48px; color: var(--tmd-accent, var(--primary-color)); }
+      .checklist-step-name { font-weight: 750; text-align: center; overflow-wrap: anywhere; }
+      .checklist-step-description { font-size: .8rem; text-align: center; }
+      .checklist-stars { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 2px; font-weight: 800; }
+      .checklist-stars ha-icon { --mdc-icon-size: 20px; color: var(--tmd-gold, #c58b00); }
+      .checklist-state { margin-top: auto; display: flex; align-items: center; gap: 5px; font-size: .8rem; }
+      .checklist-state ha-icon { --mdc-icon-size: 26px; }
+      .checklist-bonus { display: flex; align-items: center; gap: 7px; margin-top: 12px; font-weight: 700; }
+      .checklist-bonus ha-icon { --mdc-icon-size: 26px; color: var(--tmd-gold, #c58b00); }
 
       /* Chore roulette (#677) */
       .roulette {
@@ -1953,6 +2010,7 @@ class TaskMateChildCard extends LitElement {
     if (!this.hass || !this.config) {
       return html``;
     }
+    this._syncCompletionContext();
 
     const design = window.__taskmate_design
       ? window.__taskmate_design.apply(this, this.hass, this.config, this.config.entity)
@@ -2611,7 +2669,9 @@ class TaskMateChildCard extends LitElement {
   _designPlayroom(child, rows, _remaining, _tone) {
     if (rows.length === 0) return html`<div class="tmd-empty">${this._t("child.all_done")}</div>`;
     return html`<div class="tmd-chores">
-      ${rows.map(r => r.timed ? this._designTimed(r) : html`
+      ${rows.map(r => r.chore.task_type === 'checklist'
+        ? this._renderChecklistChore(r.chore, r.child, r.pointsIcon, r.todaysCompletions)
+        : r.timed ? this._designTimed(r) : html`
         <div class="tmd-chore ${r.done ? "done" : ""} ${r.mandatory ? "mandatory" : ""} ${r.dimmed ? "dimmed" : ""}" style="--ac:${r.tone}">
           <div class="num-badge" style="${r.done ? "--ac:var(--tmd-good)" : ""}">${r.done ? "✓" : r.index + 1}</div>
           <span class="ch-emoji">${r.glyph}</span>
@@ -2631,7 +2691,9 @@ class TaskMateChildCard extends LitElement {
   _designConsole(child, rows, _remaining, _tone) {
     if (rows.length === 0) return html`<div class="tmd-empty">${this._t("child.all_done")}</div>`;
     return html`<div class="grid">
-      ${rows.map(r => r.timed ? this._designTimed(r) : html`
+      ${rows.map(r => r.chore.task_type === 'checklist'
+        ? this._renderChecklistChore(r.chore, r.child, r.pointsIcon, r.todaysCompletions)
+        : r.timed ? this._designTimed(r) : html`
         <div class="tmd-quest ${r.done ? "done" : ""} ${r.mandatory ? "mandatory" : ""} ${r.dimmed ? "dimmed" : ""}" style="--ac:${r.tone}">
           <div class="num q-num" style="${r.done ? "color:var(--tmd-good)" : ""}">${r.done ? "✓" : String(r.index + 1).padStart(2, "0")}</div>
           <span class="q-emoji">${r.glyph}</span>
@@ -2653,7 +2715,9 @@ class TaskMateChildCard extends LitElement {
   _designCleanpro(child, rows, _remaining, _tone) {
     if (rows.length === 0) return html`<div class="tmd-empty">${this._t("child.all_done")}</div>`;
     return html`<div class="tmd-checklist">
-      ${rows.map(r => r.timed ? this._designTimed(r) : html`
+      ${rows.map(r => r.chore.task_type === 'checklist'
+        ? this._renderChecklistChore(r.chore, r.child, r.pointsIcon, r.todaysCompletions)
+        : r.timed ? this._designTimed(r) : html`
         <div class="tmd-check ${r.done ? "done" : ""} ${r.mandatory ? "mandatory" : ""} ${r.dimmed ? "dimmed" : ""}" style="--ac:${r.tone}">
           <div class="c-num" style="${r.done ? "--ac:var(--tmd-good)" : ""}">${r.done ? "✓" : r.index + 1}</div>
           <span class="c-emoji">${r.glyph}</span>
@@ -3397,6 +3461,9 @@ class TaskMateChildCard extends LitElement {
    * rounded star count contradicted the balance on the rest of the dashboard.
    */
   _renderPreReaderTile(chore, child, pointsIcon, todaysCompletions = []) {
+    if (chore.task_type === 'checklist') {
+      return this._renderChecklistChore(chore, child, pointsIcon, todaysCompletions);
+    }
     const dailyLimit = chore.daily_limit || 1;
     // Counted the same way the standard row does: pending completions hold a
     // place too, and a parent completing on behalf lands under "__parent__".
@@ -3474,6 +3541,9 @@ class TaskMateChildCard extends LitElement {
   }
 
   _renderChoreCard(chore, child, pointsIcon, todaysCompletions = [], choreIndex = 0) {
+    if (chore.task_type === 'checklist') {
+      return this._renderChecklistChore(chore, child, pointsIcon, todaysCompletions);
+    }
     const isLoading = this._loading[chore.id];
     const isCelebrating = this._celebrating === chore.id;
 
@@ -3824,7 +3894,107 @@ class TaskMateChildCard extends LitElement {
     `;
   }
 
+  _checklistState(chore, child, completions = []) {
+    const attrs = (window.__taskmate_attrs && window.__taskmate_attrs(this.hass, this.config.entity))
+      || this.hass?.states?.[this.config.entity]?.attributes || {};
+    const records = completions.filter(c => c.chore_id === chore.id && String(c.child_id) === String(child.id));
+    const parent = records.find(c => !c.bonus_subtask_id)
+      || completions.find(c => c.chore_id === chore.id && c.child_id === '__parent__' && !c.bonus_subtask_id);
+    // The last submitted step snapshots the promised completion bonus. Keep
+    // that amount while approval is pending, even if the chore is later edited.
+    const bonusSubmission = records.filter(c => c.bonus_subtask_id && c.checklist_bonus_points != null)
+      .sort((a, b) => (new Date(b.completed_at).getTime() || 0) - (new Date(a.completed_at).getTime() || 0))[0];
+    const bonusPoints = (parent?.approved ? parent.points : null)
+      ?? bonusSubmission?.checklist_bonus_points ?? chore.effective_points ?? chore.points ?? 0;
+    const available = (attrs.chore_availability?.[chore.id]?.[String(child.id)] !== false)
+      && chore.enabled !== false && !chore._isLockedPreview && !chore._isDependencyBlocked
+      && !chore._isRecurrenceLocked && !chore._isFirstComeLocked;
+    const steps = (chore.bonus_subtasks || []).map(step => {
+      const key = `${chore.id}_bonus_${step.id}_${child.id}`;
+      const completion = records.find(c => c.bonus_subtask_id === step.id);
+      const optimistic = this._optimisticCompletions?.[key];
+      if (completion && optimistic) optimistic.confirmed = true;
+      return {
+        step, key, completion,
+        done: completion?.approved === true,
+        pending: !!completion && !completion.approved || !completion && !!optimistic && !optimistic.confirmed,
+        loading: !!this._loading[key],
+      };
+    });
+    steps.forEach((state, index) => {
+      state.orderLocked = !!chore.checklist_sequential && steps.slice(0, index).some(s => !s.done);
+      state.locked = !available || !!parent || state.orderLocked;
+    });
+    return { steps, parent, bonusPoints, available, done: steps.filter(s => s.done).length };
+  }
+
+  /** One parent card, with picture buttons for every required step. */
+  _renderChecklistChore(chore, child, pointsIcon, completions = []) {
+    const state = this._checklistState(chore, child, completions);
+    const preReader = this.config.pre_reader === true;
+    const labels = !preReader || this.config.pre_reader_labels === true;
+    const isParent = window.__taskmate_is_parent?.(this.hass) === true;
+    const bonus = state.bonusPoints;
+    return html`
+      <section class="checklist-group ${state.parent?.approved ? 'complete' : ''}" aria-label="${chore.name}">
+        <div class="checklist-heading">
+          ${this._choreNumberBadge(chore, 'color-0', html`<ha-icon icon="mdi:format-list-checks"></ha-icon>`)}
+          <div>
+            <div class="checklist-title">${chore.name}</div>
+            <div class="checklist-progress" aria-live="polite">
+              ${this._t('child.checklist_progress', { done: state.done, total: state.steps.length })}
+            </div>
+          </div>
+        </div>
+        <div class="checklist-track" aria-hidden="true">
+          ${state.steps.map(s => html`<span class="${s.done ? 'done' : s.pending ? 'pending' : ''}"></span>`)}
+        </div>
+        ${chore._isDependencyBlocked ? html`<div class="checklist-note">${this._t('child.blocked_by_dependency', { chores: (chore._dependencyNames || []).join(', ') })}</div>` : ''}
+        ${labels && chore.description ? html`<div class="checklist-note">${chore.description}</div>` : ''}
+        <div class="checklist-steps">
+          ${state.steps.map(s => {
+            const submitted = s.done || s.pending;
+            const undo = submitted && !!s.completion && isParent;
+            const disabled = s.loading || (submitted ? !undo : s.locked);
+            const status = s.pending ? this._t('child.checklist_waiting')
+              : s.done ? this._t('child.done')
+              : s.orderLocked ? this._t('child.checklist_step_locked')
+              : s.locked ? this._t('child.chore_locked_until_generic') : '';
+            const points = s.step.points ?? 0;
+            return html`
+              <button class="checklist-step ${s.done ? 'done' : s.pending ? 'pending' : s.locked ? 'locked' : ''}"
+                data-step-id="${s.step.id}" ?disabled=${disabled}
+                aria-label="${s.step.name}${status ? ` — ${status}` : ''}${undo ? ` — ${this._t('child.checklist_undo')}` : ''}"
+                title="${s.step.name}${status ? ` — ${status}` : ''}"
+                @click=${() => undo
+                  ? this._handleUndoBonusSubtask(chore, s.step, child, completions)
+                  : this._handleCompleteBonusSubtask(chore, s.step, child)}>
+                <span class="checklist-picture"><ha-icon icon="${s.step.icon || 'mdi:checkbox-marked-circle-outline'}"></ha-icon></span>
+                ${labels ? html`<span class="checklist-step-name">${s.step.name}</span>` : ''}
+                ${labels && s.step.description ? html`<span class="checklist-step-description">${s.step.description}</span>` : ''}
+                <span class="checklist-stars" aria-label="${points}">
+                  ${preReader && !this.config.pre_reader_points && Number.isInteger(points) && points <= 10
+                    ? Array.from({ length: Math.max(0, points) }, () => html`<ha-icon icon="${pointsIcon}"></ha-icon>`)
+                    : html`<ha-icon icon="${pointsIcon}"></ha-icon> +${points}`}
+                </span>
+                <span class="checklist-state">
+                  <ha-icon icon="${s.loading ? 'mdi:loading' : s.done ? 'mdi:check-circle' : s.pending ? 'mdi:timer-sand' : s.locked ? 'mdi:lock-outline' : 'mdi:checkbox-blank-circle-outline'}"></ha-icon>
+                  ${labels ? status : ''}
+                </span>
+              </button>`;
+          })}
+        </div>
+        <div class="checklist-bonus" aria-live="polite">
+          <ha-icon icon="${state.parent?.approved ? 'mdi:star-circle' : 'mdi:gift-outline'}"></ha-icon>
+          ${state.parent?.approved
+            ? this._t('child.checklist_bonus_earned', { points: state.parent.points ?? bonus })
+            : this._t('child.checklist_bonus', { points: bonus })}
+        </div>
+      </section>`;
+  }
+
   _renderBonusSubtasks(chore, child, pointsIcon, todaysCompletions) {
+    if (chore.task_type === 'checklist') return '';
     const subtasks = chore.bonus_subtasks;
     if (!subtasks || subtasks.length === 0) return '';
 
@@ -3889,13 +4059,23 @@ class TaskMateChildCard extends LitElement {
   }
 
   async _handleCompleteBonusSubtask(chore, subtask, child) {
+    this._syncCompletionContext();
+    const context = this._completionContext;
     const bonusKey = `${chore.id}_bonus_${subtask.id}_${child.id}`;
+    if (this._loading[bonusKey]) return;
+    if (chore.task_type === 'checklist') {
+      const attrs = (window.__taskmate_attrs && window.__taskmate_attrs(this.hass, this.config.entity))
+        || this.hass?.states?.[this.config.entity]?.attributes || {};
+      const state = this._checklistState(chore, child, this._filterCompletionsForToday(attrs.todays_completions || [])).steps.find(s => s.step.id === subtask.id);
+      if (!state || state.locked || state.done || state.pending) return;
+    }
     this._loading = { ...this._loading, [bonusKey]: true };
     this.requestUpdate();
 
     // Optimistic completion
     if (!this._optimisticCompletions) this._optimisticCompletions = {};
-    this._optimisticCompletions[bonusKey] = { timestamp: Date.now(), count: 1 };
+    const optimistic = { timestamp: Date.now(), count: 1 };
+    this._optimisticCompletions[bonusKey] = optimistic;
 
     try {
       await this.hass.callService("taskmate", "complete_bonus_subtask", {
@@ -3903,9 +4083,17 @@ class TaskMateChildCard extends LitElement {
         bonus_subtask_id: subtask.id,
         child_id: child.id,
       });
+      this._syncCompletionContext();
+      if (context !== this._completionContext) return;
       this._playSound(chore.completion_sound || this.config.default_sound || "chime");
     } catch (err) {
+      this._syncCompletionContext();
+      if (context !== this._completionContext) return;
       delete this._optimisticCompletions[bonusKey];
+      this.dispatchEvent(new CustomEvent('hass-notification', {
+        detail: { message: this._t('child.error_complete', { message: err?.message || String(err) }) },
+        bubbles: true, composed: true,
+      }));
     }
 
     this._loading = { ...this._loading, [bonusKey]: false };
@@ -3913,7 +4101,7 @@ class TaskMateChildCard extends LitElement {
 
     // Clear optimistic after 30s
     setTimeout(() => {
-      if (this._optimisticCompletions && this._optimisticCompletions[bonusKey]) {
+      if (this._optimisticCompletions?.[bonusKey] === optimistic) {
         delete this._optimisticCompletions[bonusKey];
         this.requestUpdate();
       }
@@ -4034,6 +4222,7 @@ class TaskMateChildCard extends LitElement {
   }
 
   async _handleComplete(chore, child, photoUrl = null, extra = null) {
+    if (chore.task_type === 'checklist') return;
     const key = `${chore.id}_${child.id}`;
     const dailyLimit = chore.daily_limit || 1;
 
