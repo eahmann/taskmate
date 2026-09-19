@@ -71,7 +71,7 @@ from .const import (
     is_valid_completion_sound,
 )
 from .coordinator import TaskMateCoordinator
-from .models import BonusSubTask, Reward
+from .models import BonusSubTask, Chore, Reward
 from .sounds import MAX_NAME_LEN as MAX_SOUND_NAME_LEN
 
 _LOGGER = logging.getLogger(__name__)
@@ -622,6 +622,7 @@ _CHORE_EDITABLE_FIELDS = {
     "publish_calendar_entities",
     "bonus_subtasks",
     "task_type",
+    "checklist_sequential",
     "timed_rate_points",
     "timed_rate_minutes",
     "timed_max_daily_minutes",
@@ -681,9 +682,11 @@ def _chore_payload_schema(*, require_name: bool):
                 vol.Optional("points"): vol.All(int, vol.Range(min=0)),
                 vol.Optional("description"): str,
                 vol.Optional("id"): str,
+                vol.Optional("icon"): str,
             }
         ],
-        vol.Optional("task_type"): vol.In(["standard", "timed"]),
+        vol.Optional("task_type"): vol.In(["standard", "timed", "checklist"]),
+        vol.Optional("checklist_sequential"): bool,
         vol.Optional("timed_rate_points"): vol.All(int, vol.Range(min=1)),
         vol.Optional("timed_rate_minutes"): vol.All(int, vol.Range(min=1)),
         vol.Optional("timed_max_daily_minutes"): vol.All(int, vol.Range(min=0)),
@@ -715,6 +718,9 @@ async def _maybe_apply_manual_start(coordinator, chore_id: str, child_id: str | 
 @websocket_api.async_response
 @_admin_only
 async def _ws_add_chore(hass, connection, msg, coordinator):
+    # Validate before creating the initial record so a rejected checklist
+    # cannot leave a half-configured standard chore in storage.
+    coordinator._validate_checklist_chore(Chore.from_dict(msg))
     chore = await coordinator.async_add_chore(
         name=msg["name"].strip(),
         points=msg.get("points", 10),
@@ -2188,7 +2194,16 @@ async def _ws_templates_get(hass, connection, msg, coordinator):
                 vol.Optional("visibility_entity"): str,
                 vol.Optional("visibility_state"): str,
                 vol.Optional("visibility_operator"): str,
-                vol.Optional("task_type"): vol.In(["standard", "timed"]),
+                vol.Optional("weather_entity"): str,
+                vol.Optional("weather_block_conditions"): [str],
+                vol.Optional("weather_temp_min"): vol.Any(None, vol.Coerce(float)),
+                vol.Optional("weather_temp_max"): vol.Any(None, vol.Coerce(float)),
+                vol.Optional("weather_wind_max"): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0))),
+                vol.Optional("task_type"): vol.In(["standard", "timed", "checklist"]),
+                vol.Optional("checklist_sequential"): bool,
+                vol.Optional("bonus_subtasks"): _chore_payload_schema(require_name=True)[
+                    vol.Optional("bonus_subtasks")
+                ],
                 vol.Optional("timed_rate_points"): vol.All(int, vol.Range(min=1)),
                 vol.Optional("timed_rate_minutes"): vol.All(int, vol.Range(min=1)),
                 vol.Optional("timed_max_daily_minutes"): vol.All(int, vol.Range(min=0)),

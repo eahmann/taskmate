@@ -1674,6 +1674,29 @@ class TaskMateStorage:
             "previous": current,  # may be None
         }
 
+    def rebuild_last_completed(self, chore_id: str, child_id: str, *, excluding_id: str = "") -> None:
+        """Keep the newest two approved parent timestamps after an out-of-order review."""
+        stamps = sorted(
+            (
+                c.completed_at
+                for c in self.get_completions()
+                if c.chore_id == chore_id
+                and c.child_id == child_id
+                and c.approved
+                and not c.bonus_subtask_id
+                and c.id != excluding_id
+            ),
+            reverse=True,
+        )
+        records = self._data.setdefault("last_completed", {}).setdefault(chore_id, {})
+        if stamps:
+            records[child_id] = {
+                "current": stamps[0].isoformat(),
+                "previous": stamps[1].isoformat() if len(stamps) > 1 else None,
+            }
+        else:
+            records.pop(child_id, None)
+
     def undo_last_completed(self, chore_id: str, child_id: str) -> None:
         """Undo the most recent completion — restores previous as current."""
         record = self._data.get("last_completed", {}).get(chore_id, {}).get(child_id)

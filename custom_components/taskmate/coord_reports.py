@@ -57,19 +57,25 @@ class ReportsMixin:
         end = dt_util.as_local(dt_util.now()).date()
         return end - timedelta(days=span - 1), end, span
 
-    def _completions_in_window(self, start: date, end: date) -> list:
-        """Approved, non-bonus completions inside the window.
+    def _completions_in_window(self, start: date, end: date, *, include_checklist_steps: bool = False) -> list:
+        """Approved completions inside the window, normally parents only.
 
-        Bonus sub-tasks are excluded: they're extra credit attached to a chore
-        that's already counted, so including them would double-count the effort.
+        Optional bonus tasks are excluded. Required checklist steps may be
+        included for earned-points reports, whose chore count still counts
+        parents only.
         Pending completions are excluded too — unapproved work isn't yet work
         the parent has agreed happened.
         """
         out = []
+        checklist_ids = (
+            {chore.id for chore in self.storage.get_chores() if chore.task_type == "checklist"}
+            if include_checklist_steps
+            else set()
+        )
         for comp in self.storage.get_completions():
             if not getattr(comp, "approved", False):
                 continue
-            if getattr(comp, "bonus_subtask_id", ""):
+            if getattr(comp, "bonus_subtask_id", "") and comp.chore_id not in checklist_ids:
                 continue
             try:
                 when = dt_util.as_local(comp.completed_at).date()
@@ -89,7 +95,7 @@ class ReportsMixin:
         """
         start, end, span = self._report_window(days)
         children = self.storage.get_children()
-        completions = self._completions_in_window(start, end)
+        completions = self._completions_in_window(start, end, include_checklist_steps=True)
 
         by_child: dict[str, dict[str, Any]] = {
             c.id: {"id": c.id, "name": c.name, "completions": 0, "points": 0, "active_days": set()} for c in children
@@ -98,7 +104,8 @@ class ReportsMixin:
             entry = by_child.get(comp.child_id)
             if entry is None:
                 continue  # a since-deleted child's history
-            entry["completions"] += 1
+            if not comp.bonus_subtask_id:
+                entry["completions"] += 1
             entry["points"] += int(getattr(comp, "points_awarded", 0) or 0)
             entry["active_days"].add(dt_util.as_local(comp.completed_at).date().isoformat())
 
