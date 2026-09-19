@@ -21,7 +21,7 @@ from .const import DOMAIN
 from .coord_rewards import reward_is_time_locked
 from .coordinator import TaskMateCoordinator
 from .entity import taskmate_device_info
-from .models import Child
+from .models import Child, ChoreCompletion
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -355,6 +355,15 @@ def _build_chore_availability(coordinator: TaskMateCoordinator, common: dict) ->
     return availability
 
 
+def _completion_display_points(completion: ChoreCompletion, legacy_points: int) -> int:
+    """Show the paid award, or the saved submission awaiting review."""
+    if completion.approved:
+        return completion.points_awarded
+    if completion.submitted_points is not None:
+        return completion.submitted_points
+    return legacy_points
+
+
 def _build_todays_completions(common: dict) -> list[dict]:
     """Build today's completions (both approved and pending)."""
     now = dt_util.now()
@@ -391,7 +400,7 @@ def _build_todays_completions(common: dict) -> list[dict]:
             if comp.child_id == "__parent__"
             else (child_lookup[comp.child_id].name if comp.child_id in child_lookup else ""),
             "chore_name": display_name,
-            "points": display_points,
+            "points": _completion_display_points(comp, display_points),
             "approved": comp.approved,
             "completed_at": comp.completed_at.isoformat()
             if hasattr(comp.completed_at, "isoformat")
@@ -573,7 +582,7 @@ def _build_recent_completions(common: dict, limit: int = 35) -> list[dict]:
                 if comp.child_id == "__parent__"
                 else (child_lookup[comp.child_id].name if comp.child_id in child_lookup else ""),
                 "chore_name": matched_chore.name if matched_chore else "",
-                "points": display_points,
+                "points": _completion_display_points(comp, display_points),
                 "approved": comp.approved,
                 "completed_at": comp.completed_at.isoformat()
                 if hasattr(comp.completed_at, "isoformat")
@@ -1378,7 +1387,7 @@ class PendingApprovalsSensor(TaskMateBaseSensor):
                     "child_id": child.id,
                     "chore_name": chore_name,
                     "chore_id": chore.id,
-                    "points": pts,
+                    "points": _completion_display_points(comp, pts),
                     "time_category": chore.time_category,
                     "completed_at": comp.completed_at.isoformat(),
                     "bonus_subtask_id": bonus_subtask_id,
