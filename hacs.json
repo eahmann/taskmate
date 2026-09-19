@@ -1,7 +1,5 @@
 {
   "name": "TaskMate",
   "homeassistant": "2024.7.0",
-  "render_readme": true,
-  "zip_release": true,
-  "filename": "taskmate.zip"
+  "render_readme": true
 }
