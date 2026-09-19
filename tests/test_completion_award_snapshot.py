@@ -64,6 +64,54 @@ def test_autoapproval_undo_and_reapproval_reuse_the_original_award():
     _run(scenario)
 
 
+@pytest.mark.parametrize("override", [25, 0])
+def test_parent_override_takes_precedence_over_the_submitted_award(override):
+    async def scenario():
+        coord, storage, child, chore = await _setup(points=10)
+        chore.deadline_at = (_now() + timedelta(hours=1)).isoformat()
+        chore.speed_bonus_points = 5
+        storage.update_chore(chore)
+        completion = await coord.async_complete_chore(chore.id, child.id)
+        assert storage.get_completions()[0].submitted_points == 15
+
+        chore.points = 99
+        storage.update_chore(chore)
+        await coord.async_approve_chore(completion.id, points=override)
+
+        saved = storage.get_completions()[0]
+        assert saved.approved
+        assert saved.submitted_points == 15
+        assert saved.points_awarded == override
+        assert storage.get_child(child.id).points == override
+
+    _run(scenario)
+
+
+def test_open_ended_suggestion_is_not_the_submitted_award_or_self_approved():
+    async def scenario():
+        coord, storage, child, chore = await _setup(requires_approval=False, points=0)
+        chore.open_ended = True
+        storage.update_chore(chore)
+        completion = await coord.async_complete_chore(chore.id, child.id, note="Cleaned the porch", suggested_points=25)
+
+        saved = storage.get_completions()[0]
+        assert not saved.approved
+        assert saved.suggested_points == 25
+        assert saved.submitted_points == 0
+        assert saved.points_awarded == 0
+        assert storage.get_child(child.id).points == 0
+
+        # A suggestion is advisory. An approval with no explicit override
+        # retains the zero base award, even after the chore's points change.
+        chore.points = 99
+        storage.update_chore(chore)
+        await coord.async_approve_chore(completion.id)
+        assert storage.get_completions()[0].points_awarded == 0
+        assert storage.get_child(child.id).points == 0
+
+    _run(scenario)
+
+
 def test_snapshot_receives_weekend_multiplier_once_using_submission_date():
     async def scenario():
         coord, storage, child, chore = await _setup(points=10)

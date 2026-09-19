@@ -77,6 +77,8 @@ def _hass_with(coordinator):
 def _coordinator():
     # spec'd so _get_coordinator's isinstance check finds it in hass.data.
     coordinator = MagicMock(spec=TaskMateCoordinator)
+    coordinator.storage = MagicMock()
+    coordinator.storage.is_retired = False
     coordinator.async_approve_chore = AsyncMock()
     coordinator.async_record_audit = AsyncMock()
     return coordinator
