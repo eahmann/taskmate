@@ -694,6 +694,7 @@ class TaskMatePointsCard extends LitElement {
   }
 
   render() {
+    if (this.config?.show_parent_actions === false) return html``;
     if (!this.hass || !this.config) {
       return html``;
     }
@@ -1066,6 +1067,7 @@ class TaskMatePointsCard extends LitElement {
   }
 
   async _quickAdjust(child, action, amount) {
+    if (this.config.show_parent_actions === false) return;
     const key = `quick_${child.id}_${action}_${amount}`;
     if (this._loading[key]) return;
 
@@ -1143,6 +1145,7 @@ class TaskMatePointsCard extends LitElement {
   }
 
   async _confirmAction(child, action) {
+    if (this.config.show_parent_actions === false) return;
     const pointsInput = this.shadowRoot.querySelector("#points-input");
     const reasonInput = this.shadowRoot.querySelector("#reason-input");
 
@@ -1253,6 +1256,7 @@ class TaskMatePointsCardEditor extends LitElement {
 
   _buildSchema() {
     return [
+      { name: 'show_parent_actions', selector: { boolean: {} } },
       { name: 'entity', selector: { entity: { domain: 'sensor' } } },
       { name: 'title', selector: { text: {} } },
       {
@@ -1274,6 +1278,7 @@ class TaskMatePointsCardEditor extends LitElement {
 
   _computeLabel = (entry) => {
     const labels = {
+      show_parent_actions: this._t('common.editor.show_parent_actions'),
       entity: this._t('points_card.editor.entity_label'),
       title: this._t('points_card.editor.title_label'),
       card_design: this._t('common.design.field_label'),
@@ -1286,6 +1291,7 @@ class TaskMatePointsCardEditor extends LitElement {
 
   _computeHelper = (entry) => {
     const helpers = {
+      show_parent_actions: this._t('common.editor.show_parent_actions_helper'),
       entity: this._t('points_card.editor.entity_helper'),
       quick_add_amounts: this._t('points_card.editor.add_buttons_helper'),
       quick_remove_amounts: this._t('points_card.editor.remove_buttons_helper'),
@@ -1300,6 +1306,7 @@ class TaskMatePointsCardEditor extends LitElement {
     const removeAmounts = this.config.quick_remove_amounts || [1, 5, 10];
 
     const data = {
+      show_parent_actions: this.config.show_parent_actions !== false,
       entity: this.config.entity || '',
       title: this.config.title || '',
       card_design: this.config.card_design || 'global',

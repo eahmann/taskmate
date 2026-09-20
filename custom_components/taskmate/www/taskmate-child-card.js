@@ -2736,6 +2736,7 @@ class TaskMateChildCard extends LitElement {
   // with the classic card, where tapping a done chore undoes it). r.onAct()
   // calls _handleUndo when the chore is done.
   _designUndoChip(r, label, cls) {
+    if (this.config.show_parent_actions === false) return html`<span class="chip ${cls || "done-chip"}">${label}</span>`;
     return html`<button class="chip ${cls || "done-chip"} tmd-undochip"
       ?disabled=${r.loading}
       title="${this._t("child.tap_to_undo")}"
@@ -3579,7 +3580,7 @@ class TaskMateChildCard extends LitElement {
     return html`
       <button
         class="pre-tile ${isDone ? 'done' : ''} ${isLoading ? 'loading' : ''} ${available ? '' : 'locked'}"
-        ?disabled=${isLoading || !available}
+        ?disabled=${isLoading || !available || (isDone && this.config.show_parent_actions === false)}
         aria-label="${chore.name}"
         title="${chore.name}"
         @click=${() => (isDone
@@ -3733,7 +3734,8 @@ class TaskMateChildCard extends LitElement {
         this._handleComplete(chore, child);
       }
     };
-    const isInteractive = !(isLoading || notDueToday || recurrenceLocked || isLockedPreview || depBlocked || timeElapsed || firstComeLocked);
+    const isInteractive = !(isLoading || notDueToday || recurrenceLocked || isLockedPreview || depBlocked || timeElapsed || firstComeLocked
+      || (isCompletedForToday && this.config.show_parent_actions === false));
     const handleRowKeyDown = (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
@@ -3754,7 +3756,7 @@ class TaskMateChildCard extends LitElement {
                 ? this._t('child.claimed_by_another', { name: chore._firstComeCompletedByName })
                 : this._t('child.claimed_by_another_generic'))
           : isCompletedForToday
-            ? this._t('child.click_to_undo')
+            ? this._t(this.config.show_parent_actions === false ? 'child.done' : 'child.click_to_undo')
             : this._t('child.click_to_complete');
 
     return html`
@@ -4020,7 +4022,7 @@ class TaskMateChildCard extends LitElement {
     const state = this._checklistState(chore, child, completions);
     const preReader = this.config.pre_reader === true;
     const labels = !preReader || this.config.pre_reader_labels === true;
-    const isParent = window.__taskmate_is_parent?.(this.hass) === true;
+    const isParent = this.config.show_parent_actions !== false && window.__taskmate_is_parent?.(this.hass) === true;
     const bonus = state.bonusPoints;
     return html`
       <section class="checklist-group ${state.parent?.approved ? 'complete' : ''}" aria-label="${chore.name}">
@@ -4116,9 +4118,10 @@ class TaskMateChildCard extends LitElement {
         <div
           class="chore-card bonus-subtask ${bonusDone ? 'completed' : ''} ${isLoading ? 'loading' : ''}"
           role="button"
-          tabindex="0"
+          tabindex="${bonusDone && this.config.show_parent_actions === false ? '-1' : '0'}"
+          aria-disabled="${bonusDone && this.config.show_parent_actions === false ? 'true' : 'false'}"
           @click="${handleClick}"
-          title="${bonusDone ? this._t('child.click_to_undo') : this._t('child.bonus_tooltip', {name: subtask.name})}"
+          title="${bonusDone ? this._t(this.config.show_parent_actions === false ? 'child.done' : 'child.click_to_undo') : this._t('child.bonus_tooltip', {name: subtask.name})}"
         >
           <div class="chore-info">
             <div class="chore-number-wrapper">
@@ -4208,6 +4211,7 @@ class TaskMateChildCard extends LitElement {
    * parent-only admin gate and reject_chore path used by _handleUndo.
    */
   async _handleUndoBonusSubtask(chore, subtask, child, todaysCompletions) {
+    if (this.config.show_parent_actions === false) return;
     this._syncCompletionContext();
     const context = this._completionContext;
     const celebrationVersion = this._checklistCelebrationVersion;
@@ -4764,6 +4768,7 @@ class TaskMateChildCard extends LitElement {
   }
 
   async _handleUndo(chore, child, childCompletionsToday) {
+    if (this.config.show_parent_actions === false) return;
     // Check if already loading for this chore (prevent double-clicks during loading)
     if (this._loading[chore.id]) {
       return;
@@ -4995,6 +5000,7 @@ class TaskMateChildCardEditor extends LitElement {
     const children = overviewEntity?.attributes?.children || [];
 
     return [
+      { name: 'show_parent_actions', selector: { boolean: {} } },
       { name: 'entity', selector: { entity: { domain: 'sensor' } } },
       {
         name: 'child_id',
@@ -5105,6 +5111,7 @@ class TaskMateChildCardEditor extends LitElement {
 
   _computeLabel = (entry) => {
     const labels = {
+      show_parent_actions: this._t('common.editor.show_parent_actions'),
       entity: this._t('common.editor.overview_entity'),
       child_id: this._t('child.editor.child'),
       time_category: this._t('child.editor.time_category'),
@@ -5127,6 +5134,7 @@ class TaskMateChildCardEditor extends LitElement {
 
   _computeHelper = (entry) => {
     const helpers = {
+      show_parent_actions: this._t('common.editor.show_parent_actions_helper'),
       entity: this._t('common.editor.overview_entity_helper'),
       child_id: this._t('child.editor.child_helper'),
       time_category: this._t('child.editor.time_category_helper'),
@@ -5144,6 +5152,7 @@ class TaskMateChildCardEditor extends LitElement {
     if (!this.hass || !this.config) return html``;
 
     const data = {
+      show_parent_actions: this.config.show_parent_actions !== false,
       entity: this.config.entity || '',
       child_id: this.config.child_id || '',
       time_category: this.config.time_category || 'morning',

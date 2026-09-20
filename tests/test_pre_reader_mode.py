@@ -77,10 +77,8 @@ class TestPreReaderCard:
         assert "_handleComplete(chore, child)" in CARD
         assert "_handleUndo(chore, child, childCompletionsToday)" in CARD
 
-    def test_done_tile_stays_tappable_for_undo(self):
-        """A mis-tap must be recoverable, exactly as on the standard row."""
-        tile = _tile_source()
-        assert "?disabled=${isLoading || !available}" in tile
+    # Undo availability is exercised through rendered buttons in the frontend
+    # suite, including default parent controls and the shared-screen override.
 
     def test_tile_shows_stars_rather_than_a_number(self):
         tile = _tile_source()

@@ -1,4 +1,6 @@
 {
+  "common.editor.show_parent_actions": "Afficher les actions parentales",
+  "common.editor.show_parent_actions_helper": "Désactivez cette option sur les pages partagées des enfants pour masquer les validations, les annulations et les commandes de points. Cela modifie l’affichage de la carte, pas les autorisations du compte.",
   "activity.reason_pool_refund_funding_changed": "Remboursement de la cagnotte (financement de la récompense modifié) : {name}",
   "activity.reason_pool_refund_assignment_changed": "Remboursement de la cagnotte (attribution de la récompense modifiée) : {name}",
   "panel.reset_title": "Réinitialiser toutes les données TaskMate",

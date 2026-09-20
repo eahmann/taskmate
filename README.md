@@ -35,6 +35,16 @@
 
 ## How it works
 
+### Shared family screens (fork feature)
+
+Cards with parent controls now have a **Show parent actions** switch in their visual editor. Set `show_parent_actions: false` on open kids/family pages when the shared Home Assistant account has the TaskMate parent role. The default remains `true`.
+
+This hides and blocks the card's undo, complete-on-behalf, approval, points-adjustment and incentive actions across Classic, Playroom, Console, Clean Pro and Accessible designs. Child chore completion and reward claims continue to work. Parent-only dashboard, approvals and points cards render no controls when the option is off; the overview, activity and incentive cards retain their informational content.
+
+The switch controls presentation, not backend authorization. Pair it with Dashboard Lock on parent views for a shared-screen PIN; the account retains its normal TaskMate and Home Assistant permissions.
+
+### Daily flow
+
 1. **Create chores** — assign them to children, set point values and schedules
 2. **Kids complete chores** — tap the child card to tick them off, earn points, build streaks
 3. **Parents approve** — chores marked "requires approval" land in a pending queue

@@ -474,11 +474,11 @@ export function createIncentiveCard(P) {
        a shared tablet sees the list with no buttons. */
 
     _canApply() {
-      return window.__taskmate_is_parent(this.hass);
+      return (this.config.show_parent_actions !== false && window.__taskmate_is_parent(this.hass));
     }
 
     _canManage() {
-      return !!this.hass?.user?.is_admin;
+      return this.config.show_parent_actions !== false && !!this.hass?.user?.is_admin;
     }
 
     _toggleEditMode() {
@@ -1063,6 +1063,7 @@ export function createIncentiveCard(P) {
 
     _buildSchema() {
       return [
+        { name: 'show_parent_actions', selector: { boolean: {} } },
         { name: 'entity', selector: { entity: { domain: 'sensor' } } },
         { name: 'title', selector: { text: {} } },
         {
@@ -1081,6 +1082,7 @@ export function createIncentiveCard(P) {
 
     _computeLabel = (entry) => {
       const labels = {
+        show_parent_actions: this._t('common.editor.show_parent_actions'),
         entity: this._t('common.editor.overview_entity'),
         title: this._t('common.editor.card_title'),
         card_design: this._t('common.design.field_label'),
@@ -1090,6 +1092,7 @@ export function createIncentiveCard(P) {
 
     _computeHelper = (entry) => {
       const helpers = {
+        show_parent_actions: this._t('common.editor.show_parent_actions_helper'),
         entity: this._t('common.editor.overview_entity_helper'),
       };
       return helpers[entry.name] ?? '';
@@ -1098,6 +1101,7 @@ export function createIncentiveCard(P) {
     render() {
       if (!this.hass || !this.config) return html``;
       const data = {
+        show_parent_actions: this.config.show_parent_actions !== false,
         entity: this.config.entity || '',
         title: this.config.title || '',
         card_design: this.config.card_design || 'global',

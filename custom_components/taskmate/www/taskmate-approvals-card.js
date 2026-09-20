@@ -649,6 +649,7 @@ class TaskMateApprovalsCard extends LitElement {
   }
 
   render() {
+    if (this.config?.show_parent_actions === false) return html``;
     if (!this.hass || !this.config) {
       return html``;
     }
@@ -1142,6 +1143,7 @@ class TaskMateApprovalsCard extends LitElement {
   }
 
   async _callClaimService(service, claimId) {
+    if (this.config.show_parent_actions === false) return;
     if (this._loading[claimId]) return;
     this._loading = { ...this._loading, [claimId]: true };
     this.requestUpdate();
@@ -1252,6 +1254,7 @@ class TaskMateApprovalsCard extends LitElement {
   }
 
   async _callMissService(service, missId) {
+    if (this.config.show_parent_actions === false) return;
     if (this._loading[missId]) return;
     this._loading = { ...this._loading, [missId]: true };
     this.requestUpdate();
@@ -1539,6 +1542,7 @@ class TaskMateApprovalsCard extends LitElement {
   }
 
   async _handleApproveAll(completions) {
+    if (this.config.show_parent_actions === false) return;
     const ids = (completions || []).map(c => c.completion_id).filter(Boolean);
     if (ids.length === 0) return;
     if (!window.confirm(this._t('approvals.approve_all_confirm', { count: ids.length }))) return;
@@ -1640,6 +1644,7 @@ class TaskMateApprovalsCard extends LitElement {
   }
 
   async _callService(service, completionId, extra = null) {
+    if (this.config.show_parent_actions === false) return;
     if (this._loading[completionId]) return;
     this._loading = { ...this._loading, [completionId]: true };
     this.requestUpdate();
@@ -1710,6 +1715,7 @@ class TaskMateApprovalsCardEditor extends LitElement {
       : null;
     const children = overviewEntity?.attributes?.children || [];
     return [
+      { name: 'show_parent_actions', selector: { boolean: {} } },
       { name: 'entity', selector: { entity: { domain: 'sensor' } } },
       { name: 'title', selector: { text: {} } },
       {
@@ -1740,6 +1746,7 @@ class TaskMateApprovalsCardEditor extends LitElement {
 
   _computeLabel = (entry) => {
     const labels = {
+      show_parent_actions: this._t('common.editor.show_parent_actions'),
       entity: this._t('common.entity'),
       title: this._t('common.title'),
       child_id: this._t('approvals.editor.child_id'),
@@ -1750,6 +1757,7 @@ class TaskMateApprovalsCardEditor extends LitElement {
 
   _computeHelper = (entry) => {
     const helpers = {
+      show_parent_actions: this._t('common.editor.show_parent_actions_helper'),
       entity: this._t('approvals.editor.entity_helper'),
       child_id: this._t('approvals.editor.child_id_helper'),
     };
@@ -1759,6 +1767,7 @@ class TaskMateApprovalsCardEditor extends LitElement {
   render() {
     if (!this.hass || !this.config) return html``;
     const data = {
+      show_parent_actions: this.config.show_parent_actions !== false,
       entity: this.config.entity || '',
       title: this.config.title || '',
       child_id: this.config.child_id || '__all__',
