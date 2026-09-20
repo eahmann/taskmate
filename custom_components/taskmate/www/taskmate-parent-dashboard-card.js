@@ -567,6 +567,7 @@ class TaskMateParentDashboardCard extends LitElement {
   }
 
   render() {
+    if (this.config?.show_parent_actions === false) return html``;
     if (!this.hass || !this.config) return html``;
 
     const design = window.__taskmate_design
@@ -832,7 +833,7 @@ class TaskMateParentDashboardCard extends LitElement {
           </div>`;
       }
       if (design === "cleanpro") {
-        const isParent = window.__taskmate_is_parent(this.hass);
+        const isParent = (this.config.show_parent_actions !== false && window.__taskmate_is_parent(this.hass));
         return html`
           <div class="row pd-ov-cp" style="--ac:${tone}">
             ${this._av(child.name, child.avatar, tone, 36)}
@@ -1051,7 +1052,7 @@ class TaskMateParentDashboardCard extends LitElement {
         const isComplete = total > 0 && approved >= total;
         const cls = isComplete ? "complete" : pct > 0 ? "partial" : "none";
 
-        const isParent = window.__taskmate_is_parent(this.hass);
+        const isParent = (this.config.show_parent_actions !== false && window.__taskmate_is_parent(this.hass));
         const outstanding = childChores.filter(c => {
           const doneToday = completions.filter(
             x => x.child_id === child.id && x.chore_id === c.id && !x.bonus_subtask_id
@@ -1314,6 +1315,7 @@ class TaskMateParentDashboardCard extends LitElement {
   }
 
   async _handleApprove(completionId) {
+    if (this.config.show_parent_actions === false) return;
     if (this._loading[completionId]) return;
     this._loading = { ...this._loading, [completionId]: true };
     this.requestUpdate();
@@ -1328,6 +1330,7 @@ class TaskMateParentDashboardCard extends LitElement {
   }
 
   async _handleReject(completionId) {
+    if (this.config.show_parent_actions === false) return;
     if (this._loading[completionId]) return;
     this._loading = { ...this._loading, [completionId]: true };
     this.requestUpdate();
@@ -1342,6 +1345,7 @@ class TaskMateParentDashboardCard extends LitElement {
   }
 
   async _handleApproveReward(claimId) {
+    if (this.config.show_parent_actions === false) return;
     if (this._loading[claimId]) return;
     this._loading = { ...this._loading, [claimId]: true };
     this.requestUpdate();
@@ -1356,6 +1360,7 @@ class TaskMateParentDashboardCard extends LitElement {
   }
 
   async _handleRejectReward(claimId) {
+    if (this.config.show_parent_actions === false) return;
     if (this._loading[claimId]) return;
     this._loading = { ...this._loading, [claimId]: true };
     this.requestUpdate();
@@ -1370,6 +1375,7 @@ class TaskMateParentDashboardCard extends LitElement {
   }
 
   async _handleSkip(choreId) {
+    if (this.config.show_parent_actions === false) return;
     const key = `skip_${choreId}`;
     this._loading = { ...this._loading, [key]: true };
     this.requestUpdate();
@@ -1384,6 +1390,7 @@ class TaskMateParentDashboardCard extends LitElement {
   }
 
   async _handlePoints(childId, delta) {
+    if (this.config.show_parent_actions === false) return;
     const key = `${childId}_${delta}`;
     this._loading = { ...this._loading, [key]: true };
     this.requestUpdate();
@@ -1402,6 +1409,7 @@ class TaskMateParentDashboardCard extends LitElement {
   }
 
   async _handleCompleteOnBehalf(choreId, childId) {
+    if (this.config.show_parent_actions === false) return;
     const key = `behalf_${childId}_${choreId}`;
     if (this._loading[key]) return;
     this._loading = { ...this._loading, [key]: true };
@@ -1455,6 +1463,7 @@ class TaskMateParentDashboardCardEditor extends LitElement {
 
   _buildSchema() {
     return [
+      { name: 'show_parent_actions', selector: { boolean: {} } },
       { name: 'entity', selector: { entity: { domain: 'sensor' } } },
       { name: 'title', selector: { text: {} } },
       {
@@ -1475,6 +1484,7 @@ class TaskMateParentDashboardCardEditor extends LitElement {
 
   _computeLabel = (entry) => {
     const labels = {
+      show_parent_actions: this._t('common.editor.show_parent_actions'),
       entity: this._t('dashboard.editor.entity_label'),
       title: this._t('dashboard.editor.title_label'),
       card_design: this._t('common.design.field_label'),
@@ -1486,6 +1496,7 @@ class TaskMateParentDashboardCardEditor extends LitElement {
 
   _computeHelper = (entry) => {
     const helpers = {
+      show_parent_actions: this._t('common.editor.show_parent_actions_helper'),
       entity: this._t('dashboard.editor.entity_helper'),
       quick_points_amount: this._t('dashboard.editor.quick_points_helper'),
     };
@@ -1495,6 +1506,7 @@ class TaskMateParentDashboardCardEditor extends LitElement {
   render() {
     if (!this.hass || !this.config) return html``;
     const data = {
+      show_parent_actions: this.config.show_parent_actions !== false,
       entity: this.config.entity || '',
       title: this.config.title || '',
       card_design: this.config.card_design || 'global',

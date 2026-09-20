@@ -525,7 +525,7 @@ class TaskMateOverviewCard extends LitElement {
       pendingApprovals = (attrs.chore_completions || completions.filter(c => !c.approved)).length;
     }
 
-    const isParent = window.__taskmate_is_parent(this.hass);
+    const isParent = (this.config.show_parent_actions !== false && window.__taskmate_is_parent(this.hass));
 
     // Aggregate today's progress across all children
     let doneTotal = 0;
@@ -738,7 +738,7 @@ class TaskMateOverviewCard extends LitElement {
     // Pending approvals for this child
     const childPending = childCompletions.filter(c => !c.approved).length;
 
-    const isParent = window.__taskmate_is_parent(this.hass);
+    const isParent = (this.config.show_parent_actions !== false && window.__taskmate_is_parent(this.hass));
     const outstanding = childChores.filter(c => {
       const doneToday = completions.filter(
         x => x.child_id === child.id && x.chore_id === c.id && !x.bonus_subtask_id
@@ -819,6 +819,7 @@ class TaskMateOverviewCard extends LitElement {
   }
 
   async _handleCompleteOnBehalf(choreId, childId) {
+    if (this.config.show_parent_actions === false) return;
     const key = `behalf_${childId}_${choreId}`;
     if (this._loading[key]) return;
     this._loading = { ...this._loading, [key]: true };
@@ -879,6 +880,7 @@ class TaskMateOverviewCardEditor extends LitElement {
 
   _buildSchema() {
     return [
+      { name: 'show_parent_actions', selector: { boolean: {} } },
       { name: 'entity', selector: { entity: { domain: 'sensor' } } },
       { name: 'title', selector: { text: {} } },
       { name: 'approvals_entity', selector: { entity: { domain: 'sensor' } } },
@@ -898,6 +900,7 @@ class TaskMateOverviewCardEditor extends LitElement {
 
   _computeLabel = (entry) => {
     const labels = {
+      show_parent_actions: this._t('common.editor.show_parent_actions'),
       entity: this._t('overview.editor.entity_label'),
       title: this._t('overview.editor.title_label'),
       approvals_entity: this._t('overview.editor.approvals_entity_label'),
@@ -908,6 +911,7 @@ class TaskMateOverviewCardEditor extends LitElement {
 
   _computeHelper = (entry) => {
     const helpers = {
+      show_parent_actions: this._t('common.editor.show_parent_actions_helper'),
       entity: this._t('overview.editor.entity_helper'),
       approvals_entity: this._t('overview.editor.approvals_entity_helper'),
     };
@@ -917,6 +921,7 @@ class TaskMateOverviewCardEditor extends LitElement {
   render() {
     if (!this.hass || !this.config) return html``;
     const data = {
+      show_parent_actions: this.config.show_parent_actions !== false,
       entity: this.config.entity || '',
       title: this.config.title || '',
       approvals_entity: this.config.approvals_entity || '',

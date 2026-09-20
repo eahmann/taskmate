@@ -820,7 +820,7 @@ class TaskMateActivityCard extends LitElement {
   // ── Undo affordance ──────────────────────────────────────
   // kind: 'chore' (undo an approval → pending) or 'txn' (reverse a points txn).
   _renderUndoButton(kind, id, detail, child, points) {
-    if (!id || this.config.show_undo === false) return '';
+    if (!id || this.config.show_undo === false || this.config.show_parent_actions === false) return '';
     const loading = !!this._loading[id];
     const message = kind === 'chore'
       ? this._t('activity.undo_confirm_chore', { detail, child, points })
@@ -840,6 +840,7 @@ class TaskMateActivityCard extends LitElement {
   }
 
   _renderConfirmDialog() {
+    if (this.config.show_parent_actions === false) return html``;
     if (!this._confirm) return '';
     // Self-contained overlay (not ha-dialog/mwc-button, which can render without
     // visible action buttons if those components aren't loaded on the page).
@@ -862,6 +863,7 @@ class TaskMateActivityCard extends LitElement {
   }
 
   async _doUndo() {
+    if (this.config.show_parent_actions === false) return;
     const pending = this._confirm;
     this._confirm = null;
     if (!pending) return;
@@ -959,7 +961,7 @@ class TaskMateActivityCard extends LitElement {
   }
 
   _designUndoBtn(undo, label) {
-    if (!undo || !undo.id || this.config.show_undo === false) return '';
+    if (!undo || !undo.id || this.config.show_undo === false || this.config.show_parent_actions === false) return '';
     const loading = !!this._loading[undo.id];
     const message = undo.kind === 'chore'
       ? this._t('activity.undo_confirm_chore', { detail: undo.detail, child: undo.child, points: undo.points })
@@ -1188,6 +1190,7 @@ class TaskMateActivityCardEditor extends LitElement {
     const entity = this.config?.entity ? this.hass?.states?.[this.config.entity] : null;
     const children = entity?.attributes?.children || [];
     return [
+      { name: 'show_parent_actions', selector: { boolean: {} } },
       { name: 'entity', selector: { entity: { domain: 'sensor' } } },
       { name: 'title', selector: { text: {} } },
       {
@@ -1223,6 +1226,7 @@ class TaskMateActivityCardEditor extends LitElement {
 
   _computeLabel = (entry) => {
     const labels = {
+      show_parent_actions: this._t('common.editor.show_parent_actions'),
       entity: this._t('common.editor.overview_entity'),
       title: this._t('common.editor.card_title'),
       card_design: this._t('common.design.field_label'),
@@ -1238,6 +1242,7 @@ class TaskMateActivityCardEditor extends LitElement {
 
   _computeHelper = (entry) => {
     const helpers = {
+      show_parent_actions: this._t('common.editor.show_parent_actions_helper'),
       entity: this._t('common.editor.overview_entity_helper'),
       child_id: this._t('activity.editor.filter_child_helper'),
       max_items: this._t('activity.editor.max_items_helper'),
@@ -1252,6 +1257,7 @@ class TaskMateActivityCardEditor extends LitElement {
   render() {
     if (!this.hass || !this.config) return html``;
     const data = {
+      show_parent_actions: this.config.show_parent_actions !== false,
       entity: this.config.entity || '',
       title: this.config.title || '',
       card_design: this.config.card_design || 'global',
