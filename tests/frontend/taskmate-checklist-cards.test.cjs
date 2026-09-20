@@ -47,6 +47,7 @@ function harness(kind, options = {}) {
     }
     requestUpdate() {}
     dispatchEvent(event) { this.events.push(event); }
+    disconnectedCallback() {}
   }
   LitElement.prototype.html = template;
   LitElement.prototype.css = template;
@@ -59,12 +60,15 @@ function harness(kind, options = {}) {
     __taskmate_is_parent: () => options.parent === true,
   };
   const timeouts = [];
+  const timers = [];
   const context = {
     window, console: { info() {}, error() {} },
     customElements: { get: name => elements.get(name), define: (name, element) => elements.set(name, element) },
     document: { querySelectorAll: () => [] },
     CustomEvent: class { constructor(type, init) { this.type = type; Object.assign(this, init); } },
-    URLSearchParams, Date: ClockDate, Intl, setTimeout: fn => timeouts.push(fn), clearTimeout() {},
+    URLSearchParams, Date: ClockDate, Intl,
+    setTimeout: (fn, delay) => { timers.push({ fn, delay }); return timeouts.push(fn); },
+    clearTimeout() {},
   };
   vm.runInNewContext(readFileSync(path.join(www, `taskmate-${kind}-card.js`), 'utf8'), context);
   const card = new (elements.get(`taskmate-${kind}-card`))();
@@ -89,7 +93,7 @@ function harness(kind, options = {}) {
     config: { time_zone: options.timeZone || 'UTC' }, states: { 'sensor.taskmate_overview': { attributes: attrs } },
     async callService(domain, service, data) { calls.push({ domain, service, data }); },
   };
-  return { card, attrs, child, chore, calls, timeouts, window,
+  return { card, attrs, child, chore, calls, timeouts, timers, window,
     setNow: value => { now = new Date(value).getTime(); }, view: () => rendered(card.render()) };
 }
 
@@ -116,6 +120,8 @@ for (const design of ['classic', 'playroom', 'console', 'cleanpro', 'accessible'
       assert.equal(calls[0].service, 'complete_bonus_subtask');
       assert.equal(calls[0].data.bonus_subtask_id, 'teeth');
       assert.match(view().step('teeth').attrs, /pending/);
+      assert.match(view().step('teeth').attrs, /step-celebrating/);
+      assert.doesNotMatch(view().markup, /class="celebration-overlay"/);
       assert.equal(view().step('teeth').disabled, true);
       await view().step('teeth').click();
       await card._handleComplete(chore, child);
@@ -168,6 +174,9 @@ test('failed step submission clears optimism and shows the error', async () => {
   card.hass.callService = async () => { throw new Error('Try again'); };
   await view().step('teeth').click();
   assert.equal(view().step('teeth').disabled, false);
+  assert.doesNotMatch(view().step('teeth').attrs, /step-celebrating/);
+  assert.doesNotMatch(view().markup, /class="celebration-overlay"/);
+  assert.equal(card._confetti.length, 0);
   assert.match(card.events.at(-1).detail.message, /Try again/);
 });
 
@@ -178,6 +187,212 @@ test('a parent rejection immediately releases a previously observed child submis
   assert.equal(view().step('teeth').disabled, true);
   attrs.todays_completions = [];
   assert.equal(view().step('teeth').disabled, false);
+});
+
+test('zero-point checklist steps celebrate locally without advertising a bonus award', async () => {
+  const { card, chore, view, timers } = harness('child');
+  chore.bonus_subtasks[0].points = 0;
+  const sounds = [];
+  card._playSound = sound => sounds.push(sound);
+  await view().step('teeth').click();
+  assert.match(view().step('teeth').attrs, /step-celebrating/);
+  assert.equal(sounds.length, 1);
+  assert.equal(card._celebrating, null);
+  assert.equal(card._confetti.length, 0);
+  for (const timer of timers.filter(timer => timer.delay < 30000)) timer.fn();
+  assert.doesNotMatch(view().step('teeth').attrs, /step-celebrating/);
+  assert.equal(view().step('teeth').disabled, true, 'ending feedback must not undo the submitted step');
+});
+
+for (const bonus of [7, 0]) {
+  test(`checklist celebration waits for approval and shows the saved parent bonus ${bonus} exactly once`, async () => {
+    const { card, attrs, chore, view, timers } = harness('child');
+    await view().step('teeth').click();
+    await view().step('dress').click();
+    attrs.todays_completions = [completion('teeth', false), completion('dress', false)];
+    assert.doesNotMatch(view().markup, /class="celebration-overlay"/);
+    // Parent approval can happen much later than the optimistic submission UI.
+    for (const timer of [...timers]) timer.fn();
+    chore.points = 99;
+    attrs.todays_completions = [
+      completion('', true, { points: bonus }),
+      completion('teeth', true, { points: 2 }),
+      completion('dress', true, { points: 3 }),
+    ];
+    const tree = view();
+    assert.match(tree.markup, /class="celebration-overlay"/);
+    assert.equal(card._celebrationPoints, bonus, 'use parent award, not current chore value or last step');
+    assert.ok(card._confetti.length > 0);
+    const confetti = card._confetti;
+    view();
+    assert.equal(card._confetti, confetti, 'a repeat HA update cannot restart confetti');
+    card._closeCelebration();
+    assert.equal(card._celebrationPoints, null);
+    assert.doesNotMatch(view().markup, /class="celebration-overlay"/);
+  });
+}
+
+test('checklist parent state published before service response celebrates only after success', async () => {
+  const { card, attrs, view } = harness('child', { chore: { requires_approval: false } });
+  attrs.todays_completions = [completion('teeth')];
+  let resolve;
+  card.hass.callService = () => new Promise(done => { resolve = done; });
+  const submission = view().step('dress').click();
+  attrs.todays_completions.push(completion('dress'), completion('', true, { points: 4 }));
+  assert.doesNotMatch(view().markup, /class="celebration-overlay"/);
+  resolve();
+  await submission;
+  assert.equal(card._celebrating, 'ready');
+  assert.equal(card._celebrationPoints, 4);
+  assert.match(view().markup, /class="celebration-overlay"/);
+});
+
+test('overlapping step responses cannot celebrate the same awarded checklist twice', async () => {
+  const { card, attrs, view } = harness('child', { chore: { requires_approval: false } });
+  const finish = [];
+  card.hass.callService = () => new Promise(resolve => finish.push(resolve));
+  const first = view().step('teeth').click();
+  const last = view().step('dress').click();
+  attrs.todays_completions = [completion('teeth'), completion('dress'), completion('', true, { points: 4 })];
+  finish[0]();
+  await first;
+  assert.match(view().markup, /class="celebration-overlay"/);
+  card._closeCelebration();
+  finish[1]();
+  await last;
+  assert.doesNotMatch(view().markup, /class="celebration-overlay"/);
+});
+
+test('undo and a fresh local completion celebrate the newly awarded parent again', async () => {
+  const { card, attrs, view } = harness('child', { parent: true });
+  attrs.todays_completions = [completion('teeth')];
+  await view().step('dress').click();
+  attrs.todays_completions.push(completion('dress'), completion('', true, { points: 4 }));
+  assert.match(view().markup, /class="celebration-overlay"/);
+  await view().step('dress').click();
+  attrs.todays_completions = [completion('teeth')];
+  assert.doesNotMatch(view().markup, /class="celebration-overlay"/);
+  await view().step('dress').click();
+  attrs.todays_completions.push(
+    completion('dress', true, { completion_id: 'done_dress_again' }),
+    completion('', true, { completion_id: 'done_parent_again', points: 6 }),
+  );
+  assert.match(view().markup, /class="celebration-overlay"/);
+  assert.equal(card._celebrationPoints, 6);
+});
+
+test('a delayed HA parent update triggers checklist celebration through shouldUpdate', async () => {
+  const { card, attrs, view, window } = harness('child');
+  await view().step('dress').click();
+  attrs.todays_completions = [completion('teeth'), completion('dress'), completion('', true, { points: 4 })];
+  window.__taskmate_hasChanged = () => false;
+  assert.equal(card.shouldUpdate(new Map([['hass', card.hass]])), true);
+  assert.equal(card._celebrating, 'ready');
+});
+
+test('already completed checklists and remote-only completions do not replay celebrations', () => {
+  const { card, attrs, view } = harness('child');
+  attrs.todays_completions = [completion('teeth'), completion('dress'), completion('', true, { points: 4 })];
+  assert.doesNotMatch(view().markup, /class="celebration-overlay"/);
+  assert.doesNotMatch(view().step('teeth').attrs, /step-celebrating/);
+  attrs.todays_completions = [];
+  view();
+  attrs.todays_completions = [completion('', true, { points: 4, completion_id: 'remote_new' })];
+  assert.doesNotMatch(view().markup, /class="celebration-overlay"/);
+  assert.equal(card._confetti.length, 0);
+});
+
+test('sibling, shared-parent, and yesterday records cannot award the child checklist celebration', async () => {
+  const { card, attrs, view } = harness('child', { now: '2026-09-19T12:00:00Z' });
+  await view().step('teeth').click();
+  attrs.todays_completions = [
+    completion('', true, { child_id: 'other', points: 40, completed_at: '2026-09-19T12:00:00Z' }),
+    completion('', true, { child_id: '__parent__', points: 30, completed_at: '2026-09-19T12:00:00Z' }),
+    completion('', true, { points: 20, completed_at: '2026-09-18T12:00:00Z' }),
+  ];
+  assert.doesNotMatch(view().markup, /class="celebration-overlay"/);
+  assert.equal(card._confetti.length, 0);
+  attrs.todays_completions.push(completion('', true, { points: 4, completed_at: '2026-09-19T12:00:00Z' }));
+  assert.match(view().markup, /class="celebration-overlay"/);
+  assert.equal(card._celebrationPoints, 4);
+});
+
+test('switching the selected child discards checklist feedback and pending celebration', async () => {
+  const { card, attrs, chore, view } = harness('child');
+  await view().step('teeth').click();
+  attrs.children.push({ id: 'other', name: 'Bea', points: 0 });
+  chore.assigned_to.push('other');
+  attrs.chore_availability.ready.other = true;
+  card.setConfig({ ...card.config, child_id: 'other' });
+  assert.doesNotMatch(view().step('teeth').attrs, /step-celebrating/);
+  attrs.todays_completions = [completion('', true, { points: 4, child_id: 'other' })];
+  assert.doesNotMatch(view().markup, /class="celebration-overlay"/);
+  card.setConfig({ ...card.config, child_id: 'kid' });
+  attrs.todays_completions.push(completion('', true, { points: 4 }));
+  assert.doesNotMatch(view().markup, /class="celebration-overlay"/);
+});
+
+test('HA local midnight clears checklist feedback and old callbacks cannot erase new feedback', async () => {
+  const { card, attrs, view, timers, setNow } = harness('child', {
+    now: '2026-09-19T04:59:00Z', timeZone: 'America/Chicago',
+  });
+  await view().step('teeth').click();
+  const oldTimers = [...timers];
+  setNow('2026-09-19T05:01:00Z');
+  assert.doesNotMatch(view().step('teeth').attrs, /step-celebrating/);
+  attrs.todays_completions = [completion('', true, { points: 4, completed_at: '2026-09-19T05:00:00Z' })];
+  assert.doesNotMatch(view().markup, /class="celebration-overlay"/);
+  attrs.todays_completions = [];
+  await view().step('teeth').click();
+  for (const timer of oldTimers) timer.fn();
+  assert.match(view().step('teeth').attrs, /step-celebrating/);
+  assert.equal(card._celebrating, null);
+});
+
+test('disconnecting clears step feedback and cannot celebrate an approval after reconnect', async () => {
+  const { card, attrs, view } = harness('child');
+  await view().step('teeth').click();
+  card.disconnectedCallback();
+  assert.doesNotMatch(view().step('teeth').attrs, /step-celebrating/);
+  attrs.todays_completions = [completion('', true, { points: 4 })];
+  assert.doesNotMatch(view().markup, /class="celebration-overlay"/);
+  assert.equal(card._confetti.length, 0);
+});
+
+test('a step response after disconnect cannot restore celebrations or sound', async () => {
+  const { card, attrs, view } = harness('child');
+  const sounds = [];
+  card._playSound = sound => sounds.push(sound);
+  let resolve;
+  card.hass.callService = () => new Promise(done => { resolve = done; });
+  const submission = view().step('teeth').click();
+  card.disconnectedCallback();
+  attrs.todays_completions = [completion('teeth'), completion('dress'), completion('', true, { points: 4 })];
+  resolve();
+  await submission;
+  assert.doesNotMatch(view().step('teeth').attrs, /step-celebrating/);
+  assert.doesNotMatch(view().markup, /class="celebration-overlay"/);
+  assert.equal(sounds.length, 0);
+});
+
+test('a delayed undo for the old child cannot cancel the selected child celebration', async () => {
+  const { card, attrs, chore, view } = harness('child', { parent: true });
+  attrs.todays_completions = [completion('teeth')];
+  let finishUndo;
+  card.hass.callService = async (_domain, service) => {
+    if (service === 'reject_chore') await new Promise(resolve => { finishUndo = resolve; });
+  };
+  const oldUndo = view().step('teeth').click();
+  attrs.children.push({ id: 'other', name: 'Bea', points: 0 });
+  chore.assigned_to.push('other');
+  attrs.chore_availability.ready.other = true;
+  card.setConfig({ ...card.config, child_id: 'other' });
+  await view().step('teeth').click();
+  attrs.todays_completions.push(completion('', true, { child_id: 'other', points: 4 }));
+  assert.match(view().markup, /class="celebration-overlay"/);
+  finishUndo();
+  await oldUndo;
+  assert.match(view().markup, /class="celebration-overlay"/);
 });
 
 test('picture checklist labels and exact point values remain configurable', () => {
