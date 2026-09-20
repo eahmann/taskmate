@@ -44,12 +44,13 @@ class TaskMateChildCard extends LitElement {
 
   shouldUpdate(changedProps) {
     const contextChanged = this._syncCompletionContext();
+    const checklistCelebrated = this._syncChecklistCelebrations();
     if (changedProps.has("hass")) {
       const flashed = this._trackEarnedBadges();
       const relevant = window.__taskmate_hasChanged
         ? window.__taskmate_hasChanged(changedProps.get("hass"), this.hass, this.config?.entity)
         : true;
-      return contextChanged || flashed || relevant;
+      return contextChanged || checklistCelebrated || flashed || relevant;
     }
     return true;
   }
@@ -59,6 +60,11 @@ class TaskMateChildCard extends LitElement {
     this._loading = {};
     this._celebrating = null;
     this._confetti = [];
+    this._checklistStepFlashes = new Map();
+    this._pendingChecklistCelebrations = new Set();
+    this._celebratedChecklistParents = new Set();
+    this._checklistCelebrationTimer = null;
+    this._checklistCelebrationVersion = 0;
     // Optimistic completions: track chores that were just completed
     // These are used to immediately hide the DONE button before the server confirms
     this._optimisticCompletions = {};
@@ -76,6 +82,7 @@ class TaskMateChildCard extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    this._clearChecklistCelebrations();
     this._stopTimerTick();
     if (this._justEarnedTimeout) {
       clearTimeout(this._justEarnedTimeout);
@@ -132,8 +139,65 @@ class TaskMateChildCard extends LitElement {
     if (changed) {
       this._optimisticCompletions = {};
       this._loading = {};
+      this._clearChecklistCelebrations();
     }
     return changed;
+  }
+
+  _clearChecklistCelebrations() {
+    this._checklistCelebrationVersion++;
+    for (const timer of this._checklistStepFlashes.values()) clearTimeout(timer);
+    this._checklistStepFlashes.clear();
+    this._pendingChecklistCelebrations.clear();
+    this._celebratedChecklistParents.clear();
+    clearTimeout(this._checklistCelebrationTimer);
+    this._checklistCelebrationTimer = null;
+    this._celebrating = null;
+    this._celebrationPoints = null;
+    this._confetti = [];
+  }
+
+  _flashChecklistStep(key) {
+    clearTimeout(this._checklistStepFlashes.get(key));
+    const timer = setTimeout(() => {
+      if (this._checklistStepFlashes.get(key) !== timer) return;
+      this._checklistStepFlashes.delete(key);
+      this.requestUpdate();
+    }, 900);
+    this._checklistStepFlashes.set(key, timer);
+    this.requestUpdate();
+  }
+
+  // A successful local tap arms this checklist. Wait for the actual awarded
+  // parent record: service responses can arrive before or after the HA update,
+  // and a parent may approve the steps much later. Reloads never arm a replay.
+  _syncChecklistCelebrations() {
+    if (!this.hass || !this.config || this._celebrating || !this._pendingChecklistCelebrations.size) return false;
+    const attrs = (window.__taskmate_attrs && window.__taskmate_attrs(this.hass, this.config.entity))
+      || this.hass.states?.[this.config.entity]?.attributes || {};
+    const completions = this._filterCompletionsForToday(attrs.todays_completions || []);
+    for (const choreId of this._pendingChecklistCelebrations) {
+      const parent = completions.find(c => c.chore_id === choreId
+        && String(c.child_id) === String(this.config.child_id) && !c.bonus_subtask_id && c.approved === true);
+      if (!parent) continue;
+      this._pendingChecklistCelebrations.delete(choreId);
+      const awardId = JSON.stringify([choreId, parent.completion_id ?? parent.id ?? parent.completed_at]);
+      // Different steps may still have responses in flight when the parent is
+      // published. They must not replay the same award after this overlay closes.
+      if (this._celebratedChecklistParents.has(awardId)) continue;
+      this._celebratedChecklistParents.add(awardId);
+      this._celebrating = choreId;
+      this._celebrationPoints = parent.points ?? 0;
+      this._spawnConfetti();
+      clearTimeout(this._checklistCelebrationTimer);
+      const timer = setTimeout(() => {
+        if (this._checklistCelebrationTimer === timer) this._closeCelebration();
+      }, 2500);
+      this._checklistCelebrationTimer = timer;
+      this.requestUpdate();
+      return true;
+    }
+    return false;
   }
 
   /* Newly-earned badges are detected by diffing this child's badges sensor
@@ -1061,6 +1125,27 @@ class TaskMateChildCard extends LitElement {
       .checklist-step.locked { opacity: .55; }
       .checklist-step.done { border-color: var(--tmd-good, #2ecc71); }
       .checklist-step.pending { border-color: var(--tmd-warn, #e6a817); }
+      .checklist-step.step-celebrating { animation: checklist-step-pop .65s ease-out; z-index: 1; }
+      .checklist-step.step-celebrating::after {
+        content: '✨'; position: absolute; top: 4px; right: 8px; font-size: 28px;
+        pointer-events: none; animation: checklist-step-sparkle .9s ease-out both;
+      }
+      @keyframes checklist-step-pop {
+        0%, 100% { transform: scale(1); }
+        35% { transform: scale(1.07) rotate(-2deg); }
+        65% { transform: scale(1.02) rotate(2deg); }
+      }
+      @keyframes checklist-step-sparkle {
+        0% { opacity: 0; transform: translateY(8px) scale(.5); }
+        30% { opacity: 1; transform: translateY(0) scale(1.2); }
+        100% { opacity: 0; transform: translateY(-18px) scale(.8); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .checklist-step.step-celebrating, .checklist-step.step-celebrating::after { animation: none; }
+        .confetti-container { display: none; }
+        .celebration-overlay, .celebration-content, .celebration-stars,
+        .celebration-title, .celebration-points { animation: none !important; }
+      }
       .checklist-picture ha-icon { --mdc-icon-size: 48px; color: var(--tmd-accent, var(--primary-color)); }
       .checklist-step-name { font-weight: 750; text-align: center; overflow-wrap: anywhere; }
       .checklist-step-description { font-size: .8rem; text-align: center; }
@@ -2011,6 +2096,8 @@ class TaskMateChildCard extends LitElement {
       return html``;
     }
     this._syncCompletionContext();
+
+    this._syncChecklistCelebrations();
 
     const design = window.__taskmate_design
       ? window.__taskmate_design.apply(this, this.hass, this.config, this.config.entity)
@@ -3962,7 +4049,7 @@ class TaskMateChildCard extends LitElement {
               : s.locked ? this._t('child.chore_locked_until_generic') : '';
             const points = s.step.points ?? 0;
             return html`
-              <button class="checklist-step ${s.done ? 'done' : s.pending ? 'pending' : s.locked ? 'locked' : ''}"
+              <button class="checklist-step ${s.done ? 'done' : s.pending ? 'pending' : s.locked ? 'locked' : ''} ${this._checklistStepFlashes.has(s.key) ? 'step-celebrating' : ''}"
                 data-step-id="${s.step.id}" ?disabled=${disabled}
                 aria-label="${s.step.name}${status ? ` — ${status}` : ''}${undo ? ` — ${this._t('child.checklist_undo')}` : ''}"
                 title="${s.step.name}${status ? ` — ${status}` : ''}"
@@ -4061,6 +4148,7 @@ class TaskMateChildCard extends LitElement {
   async _handleCompleteBonusSubtask(chore, subtask, child) {
     this._syncCompletionContext();
     const context = this._completionContext;
+    const celebrationVersion = this._checklistCelebrationVersion;
     const bonusKey = `${chore.id}_bonus_${subtask.id}_${child.id}`;
     if (this._loading[bonusKey]) return;
     if (chore.task_type === 'checklist') {
@@ -4084,11 +4172,16 @@ class TaskMateChildCard extends LitElement {
         child_id: child.id,
       });
       this._syncCompletionContext();
-      if (context !== this._completionContext) return;
+      if (context !== this._completionContext || celebrationVersion !== this._checklistCelebrationVersion) return;
       this._playSound(chore.completion_sound || this.config.default_sound || "chime");
+      if (chore.task_type === 'checklist') {
+        this._flashChecklistStep(bonusKey);
+        this._pendingChecklistCelebrations.add(chore.id);
+        this._syncChecklistCelebrations();
+      }
     } catch (err) {
       this._syncCompletionContext();
-      if (context !== this._completionContext) return;
+      if (context !== this._completionContext || celebrationVersion !== this._checklistCelebrationVersion) return;
       delete this._optimisticCompletions[bonusKey];
       this.dispatchEvent(new CustomEvent('hass-notification', {
         detail: { message: this._t('child.error_complete', { message: err?.message || String(err) }) },
@@ -4115,6 +4208,9 @@ class TaskMateChildCard extends LitElement {
    * parent-only admin gate and reject_chore path used by _handleUndo.
    */
   async _handleUndoBonusSubtask(chore, subtask, child, todaysCompletions) {
+    this._syncCompletionContext();
+    const context = this._completionContext;
+    const celebrationVersion = this._checklistCelebrationVersion;
     const bonusKey = `${chore.id}_bonus_${subtask.id}_${child.id}`;
     if (this._loading[bonusKey]) return;
 
@@ -4154,17 +4250,29 @@ class TaskMateChildCard extends LitElement {
       await this.hass.callService("taskmate", "reject_chore", {
         completion_id: completionId,
       });
+      this._syncCompletionContext();
+      if (context !== this._completionContext || celebrationVersion !== this._checklistCelebrationVersion) return;
       this._playSound(this.config.undo_sound || "undo");
       clearOptimistic();
+      if (chore.task_type === 'checklist') {
+        this._pendingChecklistCelebrations.delete(chore.id);
+        clearTimeout(this._checklistStepFlashes.get(bonusKey));
+        this._checklistStepFlashes.delete(bonusKey);
+        if (this._celebrating === chore.id) this._closeCelebration();
+      }
     } catch (error) {
+      this._syncCompletionContext();
+      if (context !== this._completionContext || celebrationVersion !== this._checklistCelebrationVersion) return;
       console.error("Failed to undo bonus sub-task completion:", error);
       const message = this._isUnauthorized(error)
         ? this._t("child.undo_not_allowed")
         : this._t("child.error_undo", { message: error?.message || "" });
       this._notifyUndo(message);
     } finally {
-      this._loading = { ...this._loading, [bonusKey]: false };
-      this.requestUpdate();
+      if (context === this._completionContext && celebrationVersion === this._checklistCelebrationVersion) {
+        this._loading = { ...this._loading, [bonusKey]: false };
+        this.requestUpdate();
+      }
     }
   }
 
@@ -4742,13 +4850,17 @@ class TaskMateChildCard extends LitElement {
 
     // Clear confetti after animation
     setTimeout(() => {
+      if (this._confetti !== confetti) return;
       this._confetti = [];
       this.requestUpdate();
     }, 3500);
   }
 
   _closeCelebration() {
+    clearTimeout(this._checklistCelebrationTimer);
+    this._checklistCelebrationTimer = null;
     this._celebrating = null;
+    this._celebrationPoints = null;
     this.requestUpdate();
   }
 }
