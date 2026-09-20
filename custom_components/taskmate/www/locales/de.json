@@ -1,4 +1,6 @@
 {
+  "common.editor.show_parent_actions": "Elternaktionen anzeigen",
+  "common.editor.show_parent_actions_helper": "Auf gemeinsam genutzten Kinderseiten ausschalten, um Freigaben, Rückgängig-Aktionen und Punktekontrollen auszublenden. Dies ändert die Kartenanzeige, nicht die Kontoberechtigungen.",
   "activity.reason_pool_refund_funding_changed": "Sparguthaben erstattet (Finanzierung der Belohnung geändert): {name}",
   "activity.reason_pool_refund_assignment_changed": "Sparguthaben erstattet (Zuordnung der Belohnung geändert): {name}",
   "panel.reset_title": "Alle TaskMate-Daten zurücksetzen",

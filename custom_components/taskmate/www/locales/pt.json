@@ -1,4 +1,6 @@
 {
+  "common.editor.show_parent_actions": "Mostrar ações dos pais",
+  "common.editor.show_parent_actions_helper": "Desative nas páginas partilhadas das crianças para ocultar aprovações, ações de anulação e controlos de pontos. Isto altera a apresentação do cartão, não as permissões da conta.",
   "activity.reason_pool_refund_funding_changed": "Reembolso da poupança (financiamento da recompensa alterado): {name}",
   "activity.reason_pool_refund_assignment_changed": "Reembolso da poupança (atribuição da recompensa alterada): {name}",
   "panel.reset_title": "Repor todos os dados do TaskMate",

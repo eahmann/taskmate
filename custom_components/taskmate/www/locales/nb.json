@@ -1,4 +1,6 @@
 {
+  "common.editor.show_parent_actions": "Vis foreldrehandlinger",
+  "common.editor.show_parent_actions_helper": "Slå av på delte barnesider for å skjule godkjenninger, angreknapper og poengkontroller. Dette endrer kortvisningen, ikke kontotillatelsene.",
   "activity.reason_pool_refund_funding_changed": "Refusjon fra sparepotten (finansiering av belønningen endret): {name}",
   "activity.reason_pool_refund_assignment_changed": "Refusjon fra sparepotten (tildeling av belønningen endret): {name}",
   "panel.reset_title": "Nullstill alle TaskMate-data",
