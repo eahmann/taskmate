@@ -105,6 +105,21 @@ function harness(kind, options = {}) {
 }
 
 for (const design of ['classic', 'playroom', 'console', 'cleanpro', 'accessible']) {
+  for (const visible of [undefined, false]) {
+    test(`${design}: completed picture tile allows undo only when parent actions are shown (${visible})`, async () => {
+      const { card, chore, child } = harness('child', {
+        parent: true, config: { card_design: design, pre_reader: true, show_parent_actions: visible },
+        chore: { task_type: 'standard', bonus_subtasks: [] },
+      });
+      let undos = 0;
+      card._handleUndo = async () => { undos++; };
+      const tile = rendered(card._renderPreReaderTile(chore, child, 'mdi:star', [completion('')]));
+      assert.equal(tile.buttons[0].disabled, visible === false);
+      await tile.buttons[0].click();
+      assert.equal(undos, visible === false ? 0 : 1);
+    });
+  }
+
   test(`${design}: shared parent account can finish checklist items but cannot undo them`, async () => {
     const { card, attrs, view, chore, child, calls } = harness('child', {
       parent: true, config: { card_design: design, show_parent_actions: false },
