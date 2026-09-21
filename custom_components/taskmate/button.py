@@ -126,12 +126,6 @@ class CompleteChoreButton(TaskMateBaseButton):
         self._attr_name = f"{child.name}: Complete {chore.name}"
 
     @property
-    def available(self) -> bool:
-        """Checklist parents complete automatically through their step buttons."""
-        chore = self.coordinator.get_chore(self.chore_id)
-        return bool(chore) and chore.task_type != "checklist" and super().available
-
-    @property
     def icon(self) -> str:
         """Return the icon."""
         chore = self.coordinator.get_chore(self.chore_id)

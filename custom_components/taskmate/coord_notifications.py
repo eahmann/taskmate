@@ -803,26 +803,15 @@ class NotificationCoordinator:
         today = dt_util.now().date()
         chores = self.storage.get_chores()
         completions = self.storage.get_completions()
-        checklist_ids = {chore.id for chore in chores if chore.task_type == "checklist"}
-        todays_submissions = [
-            c for c in completions if c.child_id == child_id and dt_util.as_local(c.completed_at).date() == today
-        ]
         completed_today = {
             c.chore_id
-            for c in todays_submissions
-            if c.chore_id not in checklist_ids or (not c.bonus_subtask_id and c.approved)
+            for c in completions
+            if c.child_id == child_id and dt_util.as_local(c.completed_at).date() == today
         }
         for chore in chores:
             if not chore.assigned_to or child_id not in chore.assigned_to:
                 continue
             if chore.id in completed_today:
                 continue
-            if chore.id in checklist_ids:
-                required = {step.id for step in chore.bonus_subtasks}
-                submitted = {c.bonus_subtask_id for c in todays_submissions if c.chore_id == chore.id}
-                # Like an ordinary pending chore, a fully submitted checklist
-                # is waiting on the parent, not on more work from the child.
-                if required and required <= submitted:
-                    continue
             return True
         return False

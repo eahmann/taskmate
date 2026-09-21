@@ -612,7 +612,6 @@ class TaskMatePanel extends HTMLElement {
     }
     if (act === "add-bonus-subtask") { this._addBonusSubtask(); return; }
     if (act === "remove-bonus-subtask") { this._removeBonusSubtask(Number(t.dataset.idx)); return; }
-    if (act === "move-bonus-subtask") { this._moveBonusSubtask(Number(t.dataset.idx), Number(t.dataset.direction)); return; }
 
     // Rewards
     if (act === "add-reward")    { this._openRewardDialog(null); return; }
@@ -882,7 +881,15 @@ class TaskMatePanel extends HTMLElement {
       let value;
       if (t.type === "checkbox" || t.tagName === "HA-SWITCH") value = t.checked;
       else value = (t.type === "number") ? (t.value === "" ? null : Number(t.value)) : t.value;
-      this._setDialogField(field, value);
+      const arrMatch = field.match(/^(\w+)\[(\d+)\]\.(\w+)$/);
+      if (arrMatch) {
+        const [, arr, idx, prop] = arrMatch;
+        if (this._dialog.data[arr] && this._dialog.data[arr][Number(idx)] !== undefined) {
+          this._dialog.data[arr][Number(idx)][prop] = value;
+        }
+      } else {
+        this._dialog.data[field] = value;
+      }
       return;
     }
   }
@@ -1002,7 +1009,7 @@ class TaskMatePanel extends HTMLElement {
     if (t.type === "checkbox" || t.tagName === "HA-SWITCH") value = t.checked;
     else if (t.type === "number") value = (t.value === "" ? null : Number(t.value));
     else value = t.value;
-    this._setDialogField(t.dataset.field, value);
+    this._dialog.data[t.dataset.field] = value;
     if (t.dataset.rerender === "true") this._render();
   }
 
@@ -1017,25 +1024,13 @@ class TaskMatePanel extends HTMLElement {
     if (!this._dialog) return;
     if (!t.dataset || !t.dataset.field) return;
     const v = e.detail && "value" in e.detail ? e.detail.value : t.value;
-    this._setDialogField(t.dataset.field, v == null ? "" : v);
-  }
-
-  _setDialogField(field, value) {
-    if (!this._dialog) return;
-    const arrMatch = field.match(/^(\w+)\[(\d+)\]\.(\w+)$/);
-    if (arrMatch) {
-      const [, arr, idx, prop] = arrMatch;
-      const item = this._dialog.data[arr]?.[Number(idx)];
-      if (item) item[prop] = value;
-    } else {
-      this._dialog.data[field] = value;
-    }
+    this._dialog.data[t.dataset.field] = v == null ? "" : v;
   }
 
   _syncIconPickers() {
     if (!this._dialog) return;
     this.querySelectorAll("ha-icon-picker[data-field]").forEach(el => {
-      if (el.value != null) this._setDialogField(el.dataset.field, el.value);
+      if (el.value != null) this._dialog.data[el.dataset.field] = el.value;
     });
   }
 
@@ -1423,7 +1418,6 @@ class TaskMatePanel extends HTMLElement {
     const blank = {
       name: "", description: "", points: 10,
       task_type: "standard",
-      checklist_sequential: false,
       timed_rate_points: 10, timed_rate_minutes: 5, timed_max_daily_minutes: 0,
       assigned_to: [], requires_approval: true,
       time_category: "anytime", completion_sound: "coin", daily_limit: 1,
@@ -1649,11 +1643,6 @@ class TaskMatePanel extends HTMLElement {
     this._syncIconPickers();
     const d = this._dialog.data;
     if (!d.name || !d.name.trim()) { this._showToast("err", this._t("panel.toast_name_required")); return; }
-    const isChecklist = d.task_type === "checklist";
-    if (isChecklist && !(d.bonus_subtasks || []).some(b => b.name && b.name.trim())) {
-      this._showToast("err", this._t("panel.checklist_step_required"));
-      return;
-    }
     const wasAdd = this._dialog.mode === "add";
     const base = {
       name: d.name.trim(),
@@ -1671,14 +1660,14 @@ class TaskMatePanel extends HTMLElement {
       claim_allowance_minutes: Math.max(0, Number(d.claim_allowance_minutes) || 0),
       completion_sound: d.completion_sound || "coin",
       difficulty: d.difficulty || "medium",
-      daily_limit: isChecklist ? 1 : Number(d.daily_limit) || 1,
+      daily_limit: Number(d.daily_limit) || 1,
       schedule_mode: d.schedule_mode || "specific_days",
       due_days: d.due_days || [],
       recurrence: d.recurrence || "weekly",
       recurrence_day: d.recurrence_day || "",
       recurrence_start: d.recurrence_start || "",
       first_occurrence_mode: d.first_occurrence_mode || "available_immediately",
-      assignment_mode: isChecklist ? "everyone" : d.assignment_mode || "everyone",
+      assignment_mode: d.assignment_mode || "everyone",
       assignment_rotation_anchor: d.assignment_rotation_anchor || "",
       require_availability: !!d.require_availability,
       visibility_entity: d.visibility_entity || "",
@@ -1696,16 +1685,14 @@ class TaskMatePanel extends HTMLElement {
       late_penalty: Math.max(0, Number(d.late_penalty) || 0),
       mandatory: !!d.mandatory,
       mandatory_penalty_points: Math.max(0, Number(d.mandatory_penalty_points) || 0),
-      require_photo: isChecklist ? false : !!d.require_photo,
-      open_ended: isChecklist ? false : !!d.open_ended,
+      require_photo: !!d.require_photo,
+      open_ended: !!d.open_ended,
       publish_calendar_entities: d.publish_calendar_entities || [],
       bonus_subtasks: (d.bonus_subtasks || []).filter(b => b.name && b.name.trim()).map(b => ({
-        name: b.name.trim(), points: b.points == null || b.points === "" ? 5 : Math.max(0, Number(b.points) || 0),
+        name: b.name.trim(), points: Number(b.points) || 5,
         description: b.description || "", ...(b.id ? {id: b.id} : {}),
-        ...(b.icon ? {icon: b.icon} : {}),
       })),
       task_type: d.task_type || "standard",
-      checklist_sequential: !!d.checklist_sequential,
       timed_rate_points: Number(d.timed_rate_points) || 10,
       timed_rate_minutes: Math.max(1, Number(d.timed_rate_minutes) || 5),
       timed_max_daily_minutes: Math.max(0, Number(d.timed_max_daily_minutes) || 0),
@@ -1723,7 +1710,6 @@ class TaskMatePanel extends HTMLElement {
 
   _addBonusSubtask() {
     if (!this._dialog) return;
-    this._syncIconPickers();
     const d = this._dialog.data;
     d.bonus_subtasks = d.bonus_subtasks || [];
     d.bonus_subtasks.push({ name: "", points: 5, description: "" });
@@ -1732,22 +1718,11 @@ class TaskMatePanel extends HTMLElement {
 
   _removeBonusSubtask(idx) {
     if (!this._dialog) return;
-    this._syncIconPickers();
     const d = this._dialog.data;
     if (d.bonus_subtasks && d.bonus_subtasks[idx] !== undefined) {
       d.bonus_subtasks.splice(idx, 1);
       this._render();
     }
-  }
-
-  _moveBonusSubtask(idx, direction) {
-    if (!this._dialog || ![-1, 1].includes(direction)) return;
-    this._syncIconPickers();
-    const steps = this._dialog.data.bonus_subtasks || [];
-    const next = idx + direction;
-    if (!Number.isInteger(idx) || idx < 0 || idx >= steps.length || next < 0 || next >= steps.length) return;
-    [steps[idx], steps[next]] = [steps[next], steps[idx]];
-    this._render();
   }
 
   // ---- Rewards ---------------------------------------------------------
@@ -4212,16 +4187,9 @@ class TaskMatePanel extends HTMLElement {
     `;
   }
 
-  _templateChorePoints(chore) {
-    const stepPoints = chore.task_type === "checklist"
-      ? (chore.bonus_subtasks || []).reduce((sum, step) => sum + (Number(step.points) || 0), 0)
-      : 0;
-    return (Number(chore.points) || 0) + stepPoints;
-  }
-
   _renderManageTemplateCard(tpl, locked) {
     const count = (tpl.chores || []).length;
-    const pts = (tpl.chores || []).reduce((s, c) => s + this._templateChorePoints(c), 0);
+    const pts = (tpl.chores || []).reduce((s, c) => s + (c.points || 0), 0);
     return `
       <div class="tm-manage-tpl ${locked ? "tm-manage-tpl-locked" : ""}" data-act="tpl-select" data-id="${this._esc(tpl.id)}" style="cursor:pointer">
         <div class="tm-tpl-icon"><ha-icon icon="${this._esc(tpl.icon || "mdi:clipboard-list")}"></ha-icon></div>
@@ -4262,7 +4230,7 @@ class TaskMatePanel extends HTMLElement {
 
   _renderTemplatePickerCard(tpl) {
     const count = (tpl.chores || []).length;
-    const pts = (tpl.chores || []).reduce((s, c) => s + this._templateChorePoints(c), 0);
+    const pts = (tpl.chores || []).reduce((s, c) => s + (c.points || 0), 0);
     return `
       <div class="tm-card tm-tpl-picker-card" data-act="tpl-select" data-id="${this._esc(tpl.id)}" style="margin-bottom:0">
         <div class="tm-tpl-picker-head">
@@ -4284,7 +4252,7 @@ class TaskMatePanel extends HTMLElement {
     const tpl = this._templateSelected;
     if (!tpl) return "";
     const chores = this._templateChores;
-    const totalPts = chores.reduce((s, c) => s + this._templateChorePoints(c), 0);
+    const totalPts = chores.reduce((s, c) => s + (c.points || 0), 0);
     return `
       <div class="tm-toolbar">
         <h2 class="tm-toolbar-title">${this._esc(tpl.name)}</h2>
@@ -4305,7 +4273,6 @@ class TaskMatePanel extends HTMLElement {
 
   _renderTemplateChoreCard(chore, idx) {
     const expanded = chore._expanded;
-    const isChecklist = chore.task_type === "checklist";
     const schedLabel = (chore.due_days || []).length === 0 ? this._t("panel.common_daily") : (chore.due_days || []).map(d => this._esc(this._labelOf(DAYS, d))).join(", ");
     return `
       <div class="tm-tpl-preview-card">
@@ -4313,7 +4280,7 @@ class TaskMatePanel extends HTMLElement {
           <span class="tm-tpl-expand ${expanded ? "open" : ""}">▶</span>
           <span class="tm-tpl-preview-name">${this._esc(chore.name)}</span>
           <span class="tm-tpl-preview-summary">
-            <span>${isChecklist ? `${this._t("panel.checklist_completion_bonus")}: ` : ""}${this._t("panel.pts_display", {count: chore.points || 0})}</span>
+            <span>${this._t("panel.pts_display", {count: chore.points || 0})}</span>
             <span>${schedLabel}</span>
             <span>${this._esc(this._timeCategoryLabel(chore.time_category))}</span>
           </span>
@@ -4323,7 +4290,7 @@ class TaskMatePanel extends HTMLElement {
           <div class="tm-tpl-preview-body">
             <div class="tm-field-row">
               <div class="tm-field"><span class="tm-field-label">${this._t("panel.common_name")}</span><input class="tm-input" type="text" data-tpl-field="name" data-tpl-idx="${idx}" value="${this._esc(chore.name)}"></div>
-              <div class="tm-field"><span class="tm-field-label">${this._t(isChecklist ? "panel.checklist_completion_bonus" : "panel.common_points")}</span><input class="tm-input" type="number" data-tpl-field="points" data-tpl-idx="${idx}" value="${this._num(chore.points)}" min="0">${isChecklist ? `<span class="tm-field-hint">${this._t("panel.checklist_completion_bonus_hint")}</span>` : ""}</div>
+              <div class="tm-field"><span class="tm-field-label">${this._t("panel.common_points")}</span><input class="tm-input" type="number" data-tpl-field="points" data-tpl-idx="${idx}" value="${this._num(chore.points)}" min="0"></div>
             </div>
             <div class="tm-field-row">
               <div class="tm-field"><span class="tm-field-label">${this._t("panel.chore_time_category_label")}</span>
@@ -4331,11 +4298,11 @@ class TaskMatePanel extends HTMLElement {
                   ${this._timeCategoryOptions().map(t => `<option value="${this._esc(t.v)}" ${chore.time_category === t.v ? "selected" : ""}>${this._esc(t.l)}</option>`).join("")}
                 </select>
               </div>
-              ${isChecklist ? `<div class="tm-field"><span class="tm-field-hint">${this._t("panel.checklist_assignment_hint")}</span></div>` : `<div class="tm-field"><span class="tm-field-label">${this._t("panel.template_assignment_mode_label")}</span>
+              <div class="tm-field"><span class="tm-field-label">${this._t("panel.template_assignment_mode_label")}</span>
                 <select class="tm-select" data-tpl-field="assignment_mode" data-tpl-idx="${idx}">
                   ${ASSIGNMENT_MODES.map(m => `<option value="${m.v}" ${chore.assignment_mode === m.v ? "selected" : ""}>${this._t(m.lk).split(" — ")[0]}</option>`).join("")}
                 </select>
-              </div>`}
+              </div>
             </div>
             <div class="tm-field" style="margin-bottom:12px"><span class="tm-field-label">${this._t("panel.template_schedule_days_label")}</span>
               <div class="tm-day-pills">
@@ -4350,7 +4317,7 @@ class TaskMatePanel extends HTMLElement {
                 </select>
               </div>
               <div class="tm-field"><span class="tm-field-label">${this._t("panel.template_daily_limit_label")}</span>
-                <input class="tm-input" type="number" data-tpl-field="daily_limit" data-tpl-idx="${idx}" value="${isChecklist ? 1 : this._num(chore.daily_limit, 1)}" min="1" ${isChecklist ? 'max="1" disabled' : ""}>
+                <input class="tm-input" type="number" data-tpl-field="daily_limit" data-tpl-idx="${idx}" value="${this._num(chore.daily_limit, 1)}" min="1">
               </div>
             </div>
           </div>
@@ -4378,7 +4345,7 @@ class TaskMatePanel extends HTMLElement {
                 <label class="tm-tpl-check-row">
                   <input type="checkbox" data-tpl-chore-check="${this._esc(c.id)}">
                   <span>${this._esc(c.name)}</span>
-                  <span class="tm-text-muted" style="margin-left:auto">${this._t("panel.pts_display", {count: this._templateChorePoints(c)})}</span>
+                  <span class="tm-text-muted" style="margin-left:auto">${this._t("panel.pts_display", {count: c.points})}</span>
                 </label>
               `).join("")}
             </div>
@@ -4403,7 +4370,10 @@ class TaskMatePanel extends HTMLElement {
   }
 
   async _doApplyTemplate() {
-    const chores = this._templateChores.map(c => this._templateChorePayload(c));
+    const chores = this._templateChores.map(c => {
+      const { _expanded, ...rest } = c;
+      return rest;
+    });
     if (chores.length === 0) return;
     const { ok, err } = await this._callWS({ type: "taskmate/templates/apply", chores });
     if (ok) {
@@ -4470,21 +4440,10 @@ class TaskMatePanel extends HTMLElement {
     });
   }
 
-  _templateChorePayload(chore) {
-    const { _expanded, ...data } = chore;
-    if (data.task_type === "checklist") {
-      data.daily_limit = 1;
-      data.assignment_mode = "everyone";
-      data.require_photo = false;
-      data.open_ended = false;
-    }
-    return data;
-  }
-
   async _doSaveCreatedTemplate() {
     const d = this._dialog?.data;
     if (!d || !d.name?.trim() || !d.chores?.length) { this._showToast("error", this._t("panel.toast_name_and_chore_required")); return; }
-    const { ok, err } = await this._callWS({ type: "taskmate/templates/create", name: d.name.trim(), icon: d.icon || "mdi:clipboard-list", chores: d.chores.map(c => this._templateChorePayload(c)) });
+    const { ok, err } = await this._callWS({ type: "taskmate/templates/create", name: d.name.trim(), icon: d.icon || "mdi:clipboard-list", chores: d.chores });
     if (ok) { this._showToast("success", this._t("panel.toast_template_created", {name: d.name})); this._closeDialog(true); await this._fetchState(); }
     else { this._showToast("error", err || this._t("panel.toast_template_failed_create")); }
   }
@@ -4492,7 +4451,7 @@ class TaskMatePanel extends HTMLElement {
   async _doSaveEditedTemplate() {
     const d = this._dialog?.data;
     if (!d || !d.template_id || !d.name?.trim()) { this._showToast("error", this._t("panel.toast_name_required_template")); return; }
-    const { ok, err } = await this._callWS({ type: "taskmate/templates/update", template_id: d.template_id, name: d.name.trim(), icon: d.icon || "mdi:clipboard-list", chores: (d.chores || []).map(c => this._templateChorePayload(c)) });
+    const { ok, err } = await this._callWS({ type: "taskmate/templates/update", template_id: d.template_id, name: d.name.trim(), icon: d.icon || "mdi:clipboard-list", chores: d.chores || [] });
     if (ok) { this._showToast("success", this._t("panel.toast_template_updated")); this._closeDialog(true); await this._fetchState(); }
     else { this._showToast("error", err || this._t("panel.toast_template_failed_update")); }
   }
@@ -5380,13 +5339,13 @@ class TaskMatePanel extends HTMLElement {
               <div class="tm-tpl-preview-card" style="margin-bottom:8px">
                 <div style="display:flex;align-items:center;gap:10px;padding:10px 14px">
                   <span style="font-weight:600;flex:1">${this._esc(c.name || this._t("panel.template_unnamed"))}</span>
-                  <span class="tm-meta">${c.task_type === "checklist" ? `${this._t("panel.checklist_completion_bonus")}: ` : ""}${this._t("panel.pts_display", {count: c.points || 0})}</span>
+                  <span class="tm-meta">${this._t("panel.pts_display", {count: c.points || 0})}</span>
                   <button type="button" class="tm-tpl-remove" data-act="tpl-dialog-remove-chore" data-idx="${i}">✕</button>
                 </div>
                 <div style="padding:0 14px 12px;border-top:1px solid var(--tm-border-soft)">
                   <div class="tm-field-row" style="margin-top:10px">
                     <div class="tm-field"><span class="tm-field-label">${this._t("panel.common_name")}</span><input class="tm-input" type="text" data-tpl-dialog-field="name" data-tpl-dialog-idx="${i}" value="${this._esc(c.name)}"></div>
-                    <div class="tm-field"><span class="tm-field-label">${this._t(c.task_type === "checklist" ? "panel.checklist_completion_bonus" : "panel.common_points")}</span><input class="tm-input" type="number" data-tpl-dialog-field="points" data-tpl-dialog-idx="${i}" value="${this._num(c.points)}" min="0">${c.task_type === "checklist" ? `<span class="tm-field-hint">${this._t("panel.checklist_completion_bonus_hint")}</span>` : ""}</div>
+                    <div class="tm-field"><span class="tm-field-label">${this._t("panel.common_points")}</span><input class="tm-input" type="number" data-tpl-dialog-field="points" data-tpl-dialog-idx="${i}" value="${this._num(c.points)}" min="0"></div>
                   </div>
                   <div class="tm-field-row">
                     <div class="tm-field"><span class="tm-field-label">${this._t("panel.chore_time_category_label")}</span>
@@ -5442,46 +5401,15 @@ class TaskMatePanel extends HTMLElement {
     );
   }
 
-  _renderChecklistEditor() {
-    const d = this._dialog.data;
-    const steps = d.bonus_subtasks || [];
-    return `<section class="tm-field tm-checklist-editor">
-      <h3>${this._t("panel.checklist_steps")}</h3>
-      <span class="tm-field-hint">${this._t("panel.checklist_steps_hint")}</span>
-      ${this._switch(this._t("panel.checklist_sequential"), "checklist_sequential", d.checklist_sequential,
-        this._t("panel.checklist_sequential_hint"))}
-      ${steps.map((step, idx) => `<div class="tm-checklist-step" style="border:1px solid var(--divider-color);border-radius:10px;padding:12px;margin:12px 0">
-        <div class="tm-field-row" style="align-items:flex-end;gap:8px">
-          ${this._field(this._t("panel.checklist_step_name", {number: idx + 1}), `bonus_subtasks[${idx}].name`, step.name, "text")}
-          <div class="tm-field" style="flex:0 0 90px">
-            <span class="tm-field-label">${this._t("panel.chore_points_label")}</span>
-            <input class="tm-input" type="number" min="0" aria-label="${this._esc(this._t("panel.chore_points_label"))}" value="${this._num(step.points)}" data-field="bonus_subtasks[${idx}].points">
-          </div>
-        </div>
-        <div class="tm-field-row">
-          ${this._field(this._t("panel.chore_description_label"), `bonus_subtasks[${idx}].description`, step.description || "", "text")}
-          ${this._iconPickerField(this._t("panel.chore_icon_label"), `bonus_subtasks[${idx}].icon`, step.icon || "")}
-        </div>
-        <div style="display:flex;gap:6px;justify-content:flex-end">
-          <button type="button" class="tm-btn tm-btn-icon" data-act="move-bonus-subtask" data-idx="${idx}" data-direction="-1" ${idx === 0 ? "disabled" : ""} title="${this._esc(this._t("reorder.move_up"))}" aria-label="${this._esc(this._t("reorder.move_up"))}"><ha-icon icon="mdi:arrow-up"></ha-icon></button>
-          <button type="button" class="tm-btn tm-btn-icon" data-act="move-bonus-subtask" data-idx="${idx}" data-direction="1" ${idx === steps.length - 1 ? "disabled" : ""} title="${this._esc(this._t("reorder.move_down"))}" aria-label="${this._esc(this._t("reorder.move_down"))}"><ha-icon icon="mdi:arrow-down"></ha-icon></button>
-          <button type="button" class="tm-btn tm-btn-icon" data-act="remove-bonus-subtask" data-idx="${idx}" title="${this._esc(this._t("panel.tooltip_remove"))}" aria-label="${this._esc(this._t("panel.tooltip_remove"))}"><ha-icon icon="mdi:trash-can-outline"></ha-icon></button>
-        </div>
-      </div>`).join("")}
-      <button type="button" class="tm-btn" data-act="add-bonus-subtask">${this._t("panel.checklist_add_step")}</button>
-    </section>`;
-  }
-
   _renderChoreDialog() {
     const d = this._dialog.data;
-    const isChecklist = d.task_type === "checklist";
     const children = this._state.children || [];
     const groups = this._state.task_groups || [];
     const memberInGroup = (d.id && groups.find(g => (g.chore_ids || []).includes(d.id))) || null;
     const showSpecificDays = d.schedule_mode === "specific_days";
     const showRecurring    = d.schedule_mode === "recurring";
-    const showRotation     = !isChecklist && ["alternating", "random", "balanced"].includes(d.assignment_mode);
-    const isUnassigned     = !isChecklist && d.assignment_mode === "unassigned";
+    const showRotation     = ["alternating", "random", "balanced"].includes(d.assignment_mode);
+    const isUnassigned     = d.assignment_mode === "unassigned";
     const calendarEntities = Object.keys((this._hass && this._hass.states) || {})
       .filter(id => id.startsWith("calendar."))
       .sort();
@@ -5499,7 +5427,6 @@ class TaskMatePanel extends HTMLElement {
         this._select(this._t("panel.chore_task_type_label"), "task_type", d.task_type || "standard", [
           { v: "standard", l: this._t("panel.chore_task_type_standard") },
           { v: "timed", l: this._t("panel.chore_task_type_timed") },
-          { v: "checklist", l: this._t("panel.chore_task_type_checklist") },
         ], "", true),
         isTimedTask ? `<div class="tm-field-row">
           ${this._field(this._t("panel.chore_points_per_window_label"), "timed_rate_points", d.timed_rate_points || 10, "number")}
@@ -5509,12 +5436,10 @@ class TaskMatePanel extends HTMLElement {
           ${this._field(this._t("panel.chore_daily_cap_label"), "timed_max_daily_minutes", d.timed_max_daily_minutes || 0, "number")}
           ${this._field(this._t("panel.chore_daily_limit_label"), "daily_limit", d.daily_limit, "number")}
         </div>` : `<div class="tm-field-row">
-          ${this._field(this._t(isChecklist ? "panel.checklist_completion_bonus" : "panel.chore_points_label"), "points", d.points, "number",
-            isChecklist ? this._t("panel.checklist_completion_bonus_hint") : "")}
-          ${isChecklist || d.assignment_mode === "first_come" ? "" : this._field(this._t("panel.chore_daily_limit_label"), "daily_limit", d.daily_limit, "number")}
+          ${this._field(this._t("panel.chore_points_label"), "points", d.points, "number")}
+          ${d.assignment_mode === "first_come" ? "" : this._field(this._t("panel.chore_daily_limit_label"), "daily_limit", d.daily_limit, "number")}
         </div>`,
-        isChecklist ? this._renderChecklistEditor() : "",
-        isChecklist ? `<div class="tm-field"><span class="tm-field-hint">${this._t("panel.checklist_assignment_hint")}</span></div>` : this._select(this._t("panel.chore_assignment_mode_label"), "assignment_mode", d.assignment_mode, ASSIGNMENT_MODES,
+        this._select(this._t("panel.chore_assignment_mode_label"), "assignment_mode", d.assignment_mode, ASSIGNMENT_MODES,
           this._t("panel.chore_assignment_mode_hint"), true),
         !isUnassigned ? (children.length > 0 ? `
           <div class="tm-field">
@@ -5584,9 +5509,9 @@ class TaskMatePanel extends HTMLElement {
           ${this._field(this._t("panel.chore_late_penalty_label"), "late_penalty", d.late_penalty, "number")}
         </div>`,
         this._switch(this._t("panel.chore_approval_label"), "requires_approval", d.requires_approval),
-        isChecklist ? "" : this._switch(this._t("panel.chore_require_photo_label"), "require_photo", d.require_photo,
+        this._switch(this._t("panel.chore_require_photo_label"), "require_photo", d.require_photo,
           this._t("panel.chore_require_photo_hint")),
-        isChecklist ? "" : this._switch(this._t("panel.chore_open_ended_label"), "open_ended", d.open_ended,
+        this._switch(this._t("panel.chore_open_ended_label"), "open_ended", d.open_ended,
           this._t("panel.chore_open_ended_hint")),
         this._switch(this._t("panel.chore_require_availability"), "require_availability", d.require_availability,
           this._t("panel.chore_require_availability_hint")),
@@ -5599,7 +5524,7 @@ class TaskMatePanel extends HTMLElement {
             <span class="tm-field-hint">${this._t("panel.chore_group_hint", {name: this._esc(memberInGroup.name), policy: memberInGroup.policy})}</span>
           </div>
         ` : "",
-        isChecklist ? "" : `<details class="tm-advanced" data-section="bonus_subtasks"${this._dialog._openAdvanced?.has("bonus_subtasks") ? " open" : ""}>
+        `<details class="tm-advanced" data-section="bonus_subtasks"${this._dialog._openAdvanced?.has("bonus_subtasks") ? " open" : ""}>
           <summary>${this._t("panel.chore_advanced_bonus_subtasks")}</summary>
           <div>
             <span class="tm-field-hint" style="margin-bottom:8px;display:block">${this._t("panel.chore_advanced_bonus_subtasks_hint")}</span>
@@ -6514,7 +6439,7 @@ class TaskMatePanel extends HTMLElement {
     if (!c) return;
     const esc = this._esc.bind(this);
     const items = [];
-    if (c.task_type !== "checklist" && this._state.parent_completable && this._state.parent_completable[id])
+    if (this._state.parent_completable && this._state.parent_completable[id])
       items.push({ act: "parent-complete-chore", icon: "👤✓", label: this._t("panel.parent_complete_tooltip") });
     if (["alternating", "random", "balanced"].includes(c.assignment_mode))
       items.push({ act: "skip-chore", icon: "⏭", label: this._t("panel.btn_skip_chore") });

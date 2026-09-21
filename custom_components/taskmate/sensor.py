@@ -88,11 +88,7 @@ def _compute_common(coordinator: TaskMateCoordinator) -> dict:
     for comp in pending_completions:
         chore = chore_lookup.get(comp.chore_id)
         if chore:
-            points = comp.submitted_points
-            if points is None:
-                step = next((s for s in chore.bonus_subtasks if s.id == comp.bonus_subtask_id), None)
-                points = step.points if step else chore.points
-            pending_points_by_child[comp.child_id] = pending_points_by_child.get(comp.child_id, 0) + points
+            pending_points_by_child[comp.child_id] = pending_points_by_child.get(comp.child_id, 0) + chore.points
 
     # Committed points per child (reward claims awaiting approval = points reserved).
     # Pool-mode pending claims are skipped because their cost was already deducted
@@ -329,9 +325,6 @@ def _build_chores_list(coordinator: TaskMateCoordinator, common: dict) -> list[d
         if completion_sound and completion_sound != "coin":
             record["completion_sound"] = completion_sound
         task_type = getattr(c, "task_type", "standard")
-        if task_type == "checklist":
-            record["task_type"] = "checklist"
-            record["checklist_sequential"] = c.checklist_sequential
         if task_type == "timed":
             record["task_type"] = "timed"
             record["timed_rate_points"] = getattr(c, "timed_rate_points", 10)
@@ -339,10 +332,7 @@ def _build_chores_list(coordinator: TaskMateCoordinator, common: dict) -> list[d
             record["timed_max_daily_minutes"] = getattr(c, "timed_max_daily_minutes", 0)
         bonus_subtasks = getattr(c, "bonus_subtasks", [])
         if bonus_subtasks:
-            record["bonus_subtasks"] = [
-                {"id": b.id, "name": b.name, "points": b.points, "description": b.description, "icon": b.icon}
-                for b in bonus_subtasks
-            ]
+            record["bonus_subtasks"] = [{"id": b.id, "name": b.name, "points": b.points} for b in bonus_subtasks]
         chores_list.append(record)
     return chores_list
 
@@ -417,8 +407,6 @@ def _build_todays_completions(common: dict) -> list[dict]:
             else str(comp.completed_at),
             "bonus_subtask_id": bonus_subtask_id,
         }
-        if comp.checklist_bonus_points is not None:
-            rec["checklist_bonus_points"] = comp.checklist_bonus_points
         if timed_secs > 0:
             rec["timed_duration_seconds"] = timed_secs
         # Emit the bare (unsigned) photo path. A card's <img> carries no bearer
