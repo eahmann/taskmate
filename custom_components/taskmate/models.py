@@ -724,6 +724,8 @@ class ChoreCompletion:
     # Effective chore/bonus/timer points at submission, before weekend and
     # streak awards. None identifies legacy records requiring recalculation.
     submitted_points: int | None = None
+    # Set only by child submission paths; permanently cleared on parent review.
+    child_undo_allowed: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ChoreCompletion:
@@ -755,6 +757,7 @@ class ChoreCompletion:
             suggested_points=int(data.get("suggested_points", 0) or 0),
             id=data.get("id") or generate_id(),
             submitted_points=submitted_points,
+            child_undo_allowed=data.get("child_undo_allowed") is True,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -773,6 +776,7 @@ class ChoreCompletion:
             "suggested_points": self.suggested_points,
             "id": self.id,
             "submitted_points": self.submitted_points,
+            "child_undo_allowed": self.child_undo_allowed,
         }
 
 

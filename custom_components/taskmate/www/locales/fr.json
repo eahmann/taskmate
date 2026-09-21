@@ -1843,5 +1843,9 @@
   "routine.progress": "{done} / {total} tâches requises approuvées",
   "routine.pending": "{count} en attente de l’approbation parentale",
   "routine.optional": "Facultatives : {names}",
-  "routine.complete_status": "Routine terminée !"
+  "routine.complete_status": "Routine terminée !",
+  "panel.settings_chore_undo_label": "Délai pour annuler une tâche (secondes)",
+  "panel.settings_chore_undo_hint": "Pour tous les enfants et tableaux de bord. Les tâches approuvées automatiquement peuvent être annulées pendant 0 à 3600 secondes après leur réalisation ; 0 désactive ce délai. Les demandes en attente peuvent être retirées avant leur approbation par un parent.",
+  "child.undo_recent": "Annuler les tâches récentes",
+  "child.undo_named": "Annuler {name}"
 }

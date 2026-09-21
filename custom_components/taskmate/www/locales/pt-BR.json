@@ -1843,5 +1843,9 @@
   "routine.progress": "{done} / {total} tarefas obrigatórias aprovadas",
   "routine.pending": "{count} aguardam aprovação dos pais",
   "routine.optional": "Opcionais: {names}",
-  "routine.complete_status": "Rotina concluída!"
+  "routine.complete_status": "Rotina concluída!",
+  "panel.settings_chore_undo_label": "Prazo para desfazer tarefas (segundos)",
+  "panel.settings_chore_undo_hint": "Aplica-se a todas as crianças e painéis. Tarefas aprovadas automaticamente podem ser desfeitas por 0–3600 segundos após a conclusão; 0 desativa esse prazo. Envios pendentes podem ser retirados até serem aprovados por um responsável.",
+  "child.undo_recent": "Desfazer tarefas recentes",
+  "child.undo_named": "Desfazer {name}"
 }

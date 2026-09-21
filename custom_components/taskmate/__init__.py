@@ -109,6 +109,7 @@ from .const import (
     SERVICE_START_TIMED_TASK,
     SERVICE_STOP_TIMED_TASK,
     SERVICE_TEST_NOTIFICATION,
+    SERVICE_UNDO_CHORE,
     SERVICE_UNDO_CHORE_APPROVAL,
     SERVICE_UNDO_TRANSACTION,
     SERVICE_UPDATE_BONUS,
@@ -599,6 +600,19 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             _LOGGER.error("No TaskMate coordinator available")
             return
         await coordinator.async_approve_chores_bulk(call.data.get("completion_ids"))
+
+    async def handle_undo_chore(call: ServiceCall) -> None:
+        """Withdraw a completion using the child-facing undo policy."""
+        coordinator = _get_coordinator(hass)
+        if not coordinator:
+            return
+        completion_id = call.data["completion_id"]
+        completion = next((c for c in coordinator.storage.get_completions() if c.id == completion_id), None)
+        if completion is None:
+            raise ValueError("This completion no longer exists. Refresh the card.")
+        # Derive identity from the stored record, never from a caller-supplied child ID.
+        await _async_require_linked_child(hass, call, coordinator, completion.child_id)
+        await coordinator.async_undo_chore(completion_id)
 
     async def handle_reject_chore(call: ServiceCall) -> None:
         """Handle the reject_chore service call."""
@@ -1227,6 +1241,13 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         ),
     )
 
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_UNDO_CHORE,
+        _audited(handle_undo_chore),
+        schema=vol.Schema({vol.Required("completion_id"): cv.string}),
+    )
+
     _miss_schema = vol.Schema({vol.Required("miss_id"): cv.string})
     hass.services.async_register(
         DOMAIN,
@@ -1700,6 +1721,7 @@ def _async_unregister_services(hass: HomeAssistant) -> None:
         SERVICE_APPROVE_ALL_CHORES,
         SERVICE_REJECT_CHORE,
         SERVICE_UNDO_TRANSACTION,
+        SERVICE_UNDO_CHORE,
         SERVICE_UNDO_CHORE_APPROVAL,
         SERVICE_TEST_NOTIFICATION,
         SERVICE_GIFT_POINTS,

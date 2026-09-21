@@ -88,6 +88,45 @@ class TaskMateRoutineCard extends LitElement {
       || this.hass?.states?.[this.config.entity]?.attributes || {};
   }
 
+  updated() {
+    window.__taskmate_chore_undo?.scheduleExpiry(this, this._attrs(), this.config?.child_id);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    clearTimeout(this._undoExpiryTimer);
+  }
+
+  _renderUndoActions() {
+    return window.__taskmate_chore_undo?.render(html, this, this._attrs(), this.config.child_id,
+      completion => this._undoCompletion(completion)) || html``;
+  }
+
+  async _undoCompletion(completion) {
+    if (this._busy || !window.__taskmate_chore_undo?.canUndo(completion)) return;
+    this._busy = true;
+    try {
+      const id = String(completion.chore_id);
+      const index = this._tasks().findIndex(c => String(c.id) === id);
+      await this.hass.callService('taskmate', 'undo_chore', {
+        completion_id: completion.completion_id || completion.id,
+      });
+      if (!completion.bonus_subtask_id) {
+        this._runCompleted.delete(id);
+        this._skipped.delete(id);
+        this._index = Math.max(0, index);
+        this._finished = false;
+      }
+    } catch (err) {
+      this.dispatchEvent(new CustomEvent('hass-notification', {
+        detail: { message: String(err?.message || err) }, bubbles: true, composed: true,
+      }));
+    } finally {
+      this._busy = false;
+      this.requestUpdate();
+    }
+  }
+
   /**
    * Resolve the active design, stamp data-tm-design on the host (which is what
    * makes the :host-scoped token block apply inside this shadow root), and
@@ -263,6 +302,8 @@ class TaskMateRoutineCard extends LitElement {
           <span class="who">${title}</span>
         </div>
 
+        ${this._renderUndoActions()}
+
         <div class="progress">
           <div class="rt-bar"><i style="width:${pct}%"></i></div>
           <div class="count">${this._t("routine.task_of", { current: index + 1, total: tasks.length })}</div>
@@ -316,6 +357,7 @@ class TaskMateRoutineCard extends LitElement {
     return html`
       <ha-card>
         <div class="head"><span class="who">${title}</span></div>
+        ${this._renderUndoActions()}
         <div class="empty">
           <ha-icon icon="mdi:check-circle-outline"></ha-icon>
           <h2>${this._t("routine.empty_title")}</h2>
@@ -336,6 +378,7 @@ class TaskMateRoutineCard extends LitElement {
     return html`
       <ha-card>
         <div class="head"><span class="who">${title}</span></div>
+        ${this._renderUndoActions()}
         <div class="progress">
           <div class="rt-bar"><i class="full" style="width:100%"></i></div>
           <div class="count">${this._t("routine.all_done_count", { total: tasks.length })}</div>

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from homeassistant.util import dt as dt_util
 
 from . import images, photos
+from .chore_undo import child_undo_metadata
 from .const import CHORE_NOTE_MAX_LENGTH, CHORE_SUGGESTED_POINTS_MAX
 from .models import Chore, ChoreCompletion, PointsTransaction
 
@@ -877,6 +878,7 @@ class ChoresMixin:
             photo_url=photo_url or "",
             note=note,
             suggested_points=suggested_points,
+            child_undo_allowed=not as_parent,
         )
 
         # Reserve the daily quota before awarding. Notification delivery is
@@ -1070,6 +1072,7 @@ class ChoresMixin:
             points_awarded=subtask.points if not chore.requires_approval else 0,
             submitted_points=subtask.points,
             bonus_subtask_id=bonus_subtask_id,
+            child_undo_allowed=True,
         )
 
         # Reserve the bonus before awarding, as on the main completion path.
@@ -1158,6 +1161,7 @@ class ChoresMixin:
                     # Reserve approval before awarding; notification delivery
                     # stays deferred until all related bookkeeping is complete.
                     completion.approved = True
+                    completion.child_undo_allowed = False
                     completion.approved_at = dt_util.now()
                     completion.points_awarded = 0
                     self.storage.update_completion(completion)
@@ -1368,6 +1372,23 @@ class ChoresMixin:
             self.storage.append_career_score_snapshot(child.id, dt_util.now().date().isoformat(), child.career_score)
 
         return bonus_completions
+
+    async def async_undo_chore(self, completion_id: str) -> None:
+        """Withdraw a child submission, respecting parent review and the grace period.
+
+        Re-read after authorization has awaited. Validation and award reversal
+        run without yielding, so parent approval and duplicate undo cannot race.
+        This restricted route applies even to a shared screen logged in as parent.
+        """
+        completions = self.storage.get_completions()
+        completion = next((c for c in completions if c.id == completion_id), None)
+        if completion is None:
+            raise ValueError("This completion no longer exists. Refresh the card.")
+        policy = child_undo_metadata(completion, completions, self.storage.get_chore_undo_seconds())
+        deadline = datetime.fromisoformat(policy["child_undo_until"]) if policy.get("child_undo_until") else None
+        if not policy.get("child_undo_pending") and not (deadline and dt_util.now() < deadline):
+            raise ValueError("The undo window has closed or a parent has reviewed this chore. Ask a parent to undo it.")
+        await self.async_reject_chore(completion_id)
 
     async def async_reject_chore(self, completion_id: str) -> None:
         """Reject a chore completion and fully reverse all awards if already granted."""

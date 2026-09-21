@@ -6,6 +6,21 @@
 
 This fork adds [daily Routines built from ordinary chores](ROUTINES.md).
 
+It also adds a global **Chore undo window (seconds)** in **TaskMate → Settings**.
+The default is 10 seconds; choose 0–3600 seconds for all children and dashboards.
+Automatically approved chores can be undone during that window. Pending child
+submissions can be withdrawn until parent approval, even with the window set to
+0. A parent's review locks child undo immediately. Parents retain their existing
+correction controls. This applies to new submissions; older completion records
+remain parent-only.
+
+The child card (including routine groups, all designs, and picture mode) and
+guided routine card show **Undo [chore]** near the top. It remains available when
+`show_parent_actions: false`; this does not expose parent controls. Backend checks
+enforce the deadline and linked-child permissions, and reversals include the chore
+award, affected bonus subtasks, and routine completion bonus. Automations can use
+`taskmate.undo_chore` with a `completion_id` under the same restrictions.
+
 <p align="center">
   <strong>Turn chores into a game your kids actually want to play.</strong><br>
   A Home Assistant integration for family chore management, rewards, and streak tracking.

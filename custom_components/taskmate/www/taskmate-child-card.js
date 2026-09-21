@@ -75,6 +75,7 @@ class TaskMateChildCard extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    clearTimeout(this._undoExpiryTimer);
     this._stopTimerTick();
     if (this._justEarnedTimeout) {
       clearTimeout(this._justEarnedTimeout);
@@ -90,6 +91,7 @@ class TaskMateChildCard extends LitElement {
     super.updated(changedProperties);
     const attrs = (window.__taskmate_attrs && window.__taskmate_attrs(this.hass, this.config?.entity))
       || this.hass?.states?.[this.config?.entity]?.attributes || {};
+    window.__taskmate_chore_undo?.scheduleExpiry(this, attrs, this.config?.child_id || attrs.children?.[0]?.id);
     const sessions = attrs.active_timed_sessions || [];
     const hasRunning = sessions.some(s => s.state === 'running' && s.child_id === this.config?.child_id);
     // A reactive chore's countdown (#674) has to keep ticking too, otherwise it
@@ -2093,6 +2095,8 @@ class TaskMateChildCard extends LitElement {
           </div>
         </div>
 
+        ${this._renderUndoActions(attrs, child)}
+
         ${attrs.vacation_active ? html`
           <div class="vacation-banner">
             <ha-icon icon="mdi:palm-tree"></ha-icon>
@@ -2402,6 +2406,7 @@ class TaskMateChildCard extends LitElement {
       );
       return {
         chore, child, done, loading, onAct, index: i, dimmed, blocked, recLocked, firstComeLocked,
+        canUndo: this._canUndoCompletions(completions),
         tone: this._designTone(i),
         glyph: this._choreGlyph(chore),
         points: chore.effective_points ?? chore.points,
@@ -2446,6 +2451,7 @@ class TaskMateChildCard extends LitElement {
 
     return html`<ha-card class="tmd" style="--hd:${hd}">
       ${this._designHeaderFull(child, design, remaining, rows.length, tone, pendingPoints)}
+      ${this._renderUndoActions(attrs, child)}
       <div class="tmd-bd">
         ${attrs.vacation_active ? html`
           <div class="tmd-vacation">
@@ -2620,7 +2626,7 @@ class TaskMateChildCard extends LitElement {
   // with the classic card, where tapping a done chore undoes it). r.onAct()
   // calls _handleUndo when the chore is done.
   _designUndoChip(r, label, cls) {
-    if (this.config.show_parent_actions === false) return html`<span class="chip ${cls || "done-chip"}">${label}</span>`;
+    if (!r.canUndo) return html`<span class="chip ${cls || "done-chip"}">${label}</span>`;
     return html`<button class="chip ${cls || "done-chip"} tmd-undochip"
       ?disabled=${r.loading}
       title="${this._t("child.tap_to_undo")}"
@@ -3455,7 +3461,7 @@ class TaskMateChildCard extends LitElement {
     return html`
       <button
         class="pre-tile ${isDone ? 'done' : ''} ${isLoading ? 'loading' : ''} ${available ? '' : 'locked'}"
-        ?disabled=${isLoading || !available || (isDone && this.config.show_parent_actions === false)}
+        ?disabled=${isLoading || (isDone ? !this._canUndoCompletions(childCompletionsToday) : !available)}
         aria-label="${chore.name}"
         title="${chore.name}"
         @click=${() => (isDone
@@ -3607,7 +3613,7 @@ class TaskMateChildCard extends LitElement {
       }
     };
     const isInteractive = !(isLoading || notDueToday || recurrenceLocked || isLockedPreview || depBlocked || timeElapsed || firstComeLocked
-      || (isCompletedForToday && this.config.show_parent_actions === false));
+      || (isCompletedForToday && !this._canUndoCompletions(childCompletionsToday)));
     const handleRowKeyDown = (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
@@ -3628,7 +3634,7 @@ class TaskMateChildCard extends LitElement {
                 ? this._t('child.claimed_by_another', { name: chore._firstComeCompletedByName })
                 : this._t('child.claimed_by_another_generic'))
           : isCompletedForToday
-            ? this._t(this.config.show_parent_actions === false ? 'child.done' : 'child.click_to_undo')
+            ? this._t(this._canUndoCompletions(childCompletionsToday) ? 'child.click_to_undo' : 'child.done')
             : this._t('child.click_to_complete');
 
     return html`
@@ -3876,6 +3882,9 @@ class TaskMateChildCard extends LitElement {
         c => c.chore_id === chore.id && c.child_id === child.id && c.bonus_subtask_id === subtask.id
       ) || bonusOptimistic;
       const isLoading = this._loading[bonusKey];
+      const canUndo = this._canUndoCompletions(todaysCompletions.filter(
+        c => c.chore_id === chore.id && c.child_id === child.id && c.bonus_subtask_id === subtask.id
+      ));
 
       const handleClick = () => {
         if (isLoading) return;
@@ -3890,10 +3899,10 @@ class TaskMateChildCard extends LitElement {
         <div
           class="chore-card bonus-subtask ${bonusDone ? 'completed' : ''} ${isLoading ? 'loading' : ''}"
           role="button"
-          tabindex="${bonusDone && this.config.show_parent_actions === false ? '-1' : '0'}"
-          aria-disabled="${bonusDone && this.config.show_parent_actions === false ? 'true' : 'false'}"
+          tabindex="${bonusDone && !canUndo ? '-1' : '0'}"
+          aria-disabled="${bonusDone && !canUndo ? 'true' : 'false'}"
           @click="${handleClick}"
-          title="${bonusDone ? this._t(this.config.show_parent_actions === false ? 'child.done' : 'child.click_to_undo') : this._t('child.bonus_tooltip', {name: subtask.name})}"
+          title="${bonusDone ? this._t(canUndo ? 'child.click_to_undo' : 'child.done') : this._t('child.bonus_tooltip', {name: subtask.name})}"
         >
           <div class="chore-info">
             <div class="chore-number-wrapper">
@@ -3952,65 +3961,11 @@ class TaskMateChildCard extends LitElement {
     }, 30000);
   }
 
-  /**
-   * Undo a completed bonus sub-task (second click on its checkbox). Each
-   * sub-task completion carries its own completion_id, so rejecting it reverses
-   * only that sub-task's points — the parent chore stays done. Mirrors the
-   * parent-only admin gate and reject_chore path used by _handleUndo.
-   */
   async _handleUndoBonusSubtask(chore, subtask, child, todaysCompletions) {
-    if (this.config.show_parent_actions === false) return;
-    const bonusKey = `${chore.id}_bonus_${subtask.id}_${child.id}`;
-    if (this._loading[bonusKey]) return;
-
-    // Undoing removes already-awarded points, so it is parent-only — short-circuit
-    // for non-parents with one friendly message instead of a doomed service call.
-    if (!window.__taskmate_is_parent(this.hass)) {
-      this._notifyUndo(this._t("child.undo_not_allowed"));
-      return;
-    }
-
-    const clearOptimistic = () => {
-      if (this._optimisticCompletions && this._optimisticCompletions[bonusKey]) {
-        const next = { ...this._optimisticCompletions };
-        delete next[bonusKey];
-        this._optimisticCompletions = next;
-      }
-    };
-
-    // Find the persisted completion record for this sub-task.
-    const completion = (todaysCompletions || []).find(
+    const completions = (todaysCompletions || []).filter(
       c => c.chore_id === chore.id && c.child_id === child.id && c.bonus_subtask_id === subtask.id
     );
-    const completionId = completion?.completion_id || completion?.id;
-
-    // Only an optimistic tick and nothing on the server yet — just roll back the
-    // optimistic state; there is no completion to reject.
-    if (!completionId) {
-      clearOptimistic();
-      this.requestUpdate();
-      return;
-    }
-
-    this._loading = { ...this._loading, [bonusKey]: true };
-    this.requestUpdate();
-
-    try {
-      await this.hass.callService("taskmate", "reject_chore", {
-        completion_id: completionId,
-      });
-      this._playSound(this.config.undo_sound || "undo");
-      clearOptimistic();
-    } catch (error) {
-      console.error("Failed to undo bonus sub-task completion:", error);
-      const message = this._isUnauthorized(error)
-        ? this._t("child.undo_not_allowed")
-        : this._t("child.error_undo", { message: error?.message || "" });
-      this._notifyUndo(message);
-    } finally {
-      this._loading = { ...this._loading, [bonusKey]: false };
-      this.requestUpdate();
-    }
+    await this._handleUndo(chore, child, completions);
   }
 
   _renderCelebration() {
@@ -4499,44 +4454,43 @@ class TaskMateChildCard extends LitElement {
     return text.includes("unauthorized") || text.includes("not authorized");
   }
 
-  async _handleUndo(chore, child, childCompletionsToday) {
-    if (this.config.show_parent_actions === false) return;
-    // Check if already loading for this chore (prevent double-clicks during loading)
-    if (this._loading[chore.id]) {
-      return;
-    }
+  _undoService(completion) {
+    if (!completion) return null;
+    if (this.config.show_parent_actions !== false && window.__taskmate_is_parent(this.hass)) return 'reject_chore';
+    return window.__taskmate_chore_undo?.canUndo(completion) ? 'undo_chore' : null;
+  }
 
-    // Undoing a completion removes already-awarded points, so it is parent-only
-    // (this mirrors the parent gate on the reject_chore service). For a non-parent
-    // user the call always fails with a raw "Unauthorized" — HA shows its own
-    // snackbar and we used to add an error notification on top. Short-circuit
-    // with one clear, friendly message and never fire the doomed call.
-    if (!window.__taskmate_is_parent(this.hass)) {
-      this._notifyUndo(this._t("child.undo_not_allowed"));
-      return;
-    }
+  _latestCompletion(completions) {
+    return [...(completions || [])].sort((a, b) => Date.parse(b.completed_at) - Date.parse(a.completed_at))[0];
+  }
 
-    // Find the most recent completion for this chore/child to undo
-    // Sort by completed_at descending to get the most recent
-    const sortedCompletions = [...childCompletionsToday].sort((a, b) => {
-      const dateA = new Date(a.completed_at || 0);
-      const dateB = new Date(b.completed_at || 0);
-      return dateB - dateA;
-    });
+  _canUndoCompletions(completions) {
+    return !!this._undoService(this._latestCompletion(completions));
+  }
 
-    const completionToUndo = sortedCompletions[0];
-    // Check for completion_id (from sensor) or id (fallback)
+  _renderUndoActions(attrs, child) {
+    return window.__taskmate_chore_undo?.render(html, this, attrs, child.id, completion => {
+      const chore = (attrs.chores || []).find(c => c.id === completion.chore_id);
+      if (chore) return this._handleUndo(chore, child, [completion], true);
+    }) || html``;
+  }
+
+  async _handleUndo(chore, child, childCompletionsToday, childAction = false) {
+    if (this._loading[chore.id]) return;
+    const completionToUndo = this._latestCompletion(childCompletionsToday);
+    // Quick undo always uses the restricted service, even on a parent account.
+    const service = childAction
+      ? (window.__taskmate_chore_undo?.canUndo(completionToUndo) ? 'undo_chore' : null)
+      : this._undoService(completionToUndo);
     const completionId = completionToUndo?.completion_id || completionToUndo?.id;
-    if (!completionToUndo || !completionId) {
-      return;
-    }
+    if (!service || !completionId) return;
 
     this._loading = { ...this._loading, [chore.id]: true };
     this.requestUpdate();
 
     try {
-      // Call the reject_chore service to remove the completion
-      await this.hass.callService("taskmate", "reject_chore", {
+      // Parent correction and child withdrawal share the same reversal bookkeeping.
+      await this.hass.callService("taskmate", service, {
         completion_id: completionId,
       });
 
@@ -4544,16 +4498,17 @@ class TaskMateChildCard extends LitElement {
       const undoSoundToPlay = this.config.undo_sound || 'undo';
       this._playSound(undoSoundToPlay);
 
-      // Clear any optimistic completion data for this chore/child (including bonus sub-tasks)
-      const key = `${chore.id}_${child.id}`;
+      // A bonus undo leaves the main chore and its other bonus ticks intact.
+      const bonusId = completionToUndo.bonus_subtask_id;
+      const key = bonusId ? `${chore.id}_bonus_${bonusId}_${child.id}` : `${chore.id}_${child.id}`;
       const newOptimistic = { ...this._optimisticCompletions };
       delete newOptimistic[key];
-      // Also clear bonus sub-task optimistic completions
-      const bonusPrefix = `${chore.id}_bonus_`;
-      const bonusSuffix = `_${child.id}`;
-      for (const k of Object.keys(newOptimistic)) {
-        if (k.startsWith(bonusPrefix) && k.endsWith(bonusSuffix)) delete newOptimistic[k];
+      if (!bonusId) {
+        for (const k of Object.keys(newOptimistic)) {
+          if (k.startsWith(`${chore.id}_bonus_`) && k.endsWith(`_${child.id}`)) delete newOptimistic[k];
+        }
       }
+      this._celebrating = null;
       this._optimisticCompletions = newOptimistic;
 
     } catch (error) {

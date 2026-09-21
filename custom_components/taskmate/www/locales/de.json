@@ -1843,5 +1843,9 @@
   "routine.progress": "{done} / {total} Pflichtaufgaben bestätigt",
   "routine.pending": "{count} warten auf Elternbestätigung",
   "routine.optional": "Freiwillig: {names}",
-  "routine.complete_status": "Routine abgeschlossen!"
+  "routine.complete_status": "Routine abgeschlossen!",
+  "panel.settings_chore_undo_label": "Zeitfenster zum Rückgängigmachen (Sekunden)",
+  "panel.settings_chore_undo_hint": "Gilt für alle Kinder und Dashboards. Automatisch bestätigte Aufgaben können 0–3600 Sekunden lang rückgängig gemacht werden; 0 deaktiviert dieses Zeitfenster. Ausstehende Einreichungen können bis zur Bestätigung durch ein Elternteil zurückgezogen werden.",
+  "child.undo_recent": "Letzte Aufgaben rückgängig machen",
+  "child.undo_named": "{name} rückgängig machen"
 }

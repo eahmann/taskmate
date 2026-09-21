@@ -129,6 +129,64 @@
 
   window.__taskmate_is_parent = isTaskmateParent;
 
+  // Server-issued eligibility is shared by every child-facing card. Never
+  // derive approval type from a chore's current (editable) approval setting.
+  function canUndoChore(completion, now = Date.now()) {
+    return !!(completion && (completion.completion_id || completion.id)
+      && (completion.child_undo_pending === true
+        || Date.parse(completion.child_undo_until) > now));
+  }
+
+  function undoCandidates(attrs, childId) {
+    const byId = new Map();
+    // Today's records win over older pending snapshots during a state update.
+    for (const c of [...(attrs.chore_completions || []), ...(attrs.todays_completions || [])]) {
+      if (c.child_id === childId) byId.set(c.completion_id || c.id, c);
+    }
+    return [...byId.values()].filter(c => canUndoChore(c))
+      .sort((a, b) => Date.parse(b.completed_at) - Date.parse(a.completed_at));
+  }
+
+  function scheduleUndoExpiry(card, attrs, childId) {
+    clearTimeout(card._undoExpiryTimer);
+    card._undoExpiryTimer = null;
+    const deadlines = undoCandidates(attrs, childId)
+      .map(c => Date.parse(c.child_undo_until)).filter(t => Number.isFinite(t));
+    if (deadlines.length) {
+      card._undoExpiryTimer = setTimeout(() => card.requestUpdate(),
+        Math.max(1, Math.min(...deadlines) - Date.now() + 1));
+    }
+  }
+
+  function renderChoreUndo(html, card, attrs, childId, onUndo) {
+    const candidates = undoCandidates(attrs, childId);
+    if (!candidates.length) return html``;
+    return html`
+      <style>
+        .tm-child-undo { display:flex; flex-wrap:wrap; gap:8px; padding:12px 16px;
+          background:var(--tmd-surface, var(--card-background-color, #fff)); }
+        .tm-child-undo button { display:flex; align-items:center; gap:8px;
+          min-height:44px; padding:8px 12px; border:1px solid var(--divider-color, #888);
+          border-radius:12px; background:var(--card-background-color, #fff);
+          color:var(--primary-text-color, #222); font:inherit; cursor:pointer; }
+        .tm-child-undo button:disabled { opacity:.5; cursor:default; }
+        .tm-child-undo button:focus-visible { outline:3px solid var(--primary-color, #03a9f4); }
+      </style>
+      <div class="tm-child-undo" aria-label=${card._t('child.undo_recent')}>
+        ${candidates.map(c => html`<button type="button"
+          ?disabled=${!!card._busy || !!card._loading?.[c.chore_id]}
+          @click=${() => onUndo(c)}>
+          <ha-icon icon="mdi:undo-variant"></ha-icon>
+          ${card._t('child.undo_named', { name: c.chore_name || (attrs.chores || []).find(chore => chore.id === c.chore_id)?.name || '' })}
+        </button>`)}
+      </div>`;
+  }
+
+  window.__taskmate_chore_undo = {
+    canUndo: canUndoChore, candidates: undoCandidates,
+    scheduleExpiry: scheduleUndoExpiry, render: renderChoreUndo,
+  };
+
   /**
    * Stable id of a badge entry from the badges sensor.
    *
