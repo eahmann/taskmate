@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from .models import BonusSubTask, Chore, generate_id, optional_float
+from .models import Chore, generate_id, optional_float
 from .templates import BUILT_IN_IDS, BUILT_IN_TEMPLATES, TEMPLATE_CHORE_FIELDS
 
 if TYPE_CHECKING:
@@ -58,7 +58,7 @@ class TemplatesMixin:
         """Create chores from a template's chore definitions. Returns created IDs."""
         if not chores:
             raise ValueError("Cannot apply template with no chores")
-        prepared = []
+        created_ids = []
         for chore_def in chores:
             chore = Chore(
                 name=chore_def.get("name", "Unnamed"),
@@ -86,19 +86,15 @@ class TemplatesMixin:
                 weather_temp_max=optional_float(chore_def.get("weather_temp_max")),
                 weather_wind_max=optional_float(chore_def.get("weather_wind_max")),
                 task_type=chore_def.get("task_type", "standard"),
-                checklist_sequential=chore_def.get("checklist_sequential", False),
-                bonus_subtasks=[BonusSubTask.from_dict(step) for step in chore_def.get("bonus_subtasks", [])],
                 timed_rate_points=chore_def.get("timed_rate_points", 10),
                 timed_rate_minutes=chore_def.get("timed_rate_minutes", 5),
                 timed_max_daily_minutes=chore_def.get("timed_max_daily_minutes", 0),
             )
-            self._validate_checklist_chore(chore)
-            prepared.append(chore)
-        for chore in prepared:
             self.storage.add_chore(chore)
+            created_ids.append(chore.id)
         await self.storage.async_save()
         await self.async_refresh()
-        return [chore.id for chore in prepared]
+        return created_ids
 
     async def async_save_template_from_chores(self, chore_ids: list[str], name: str, icon: str) -> str:
         """Save existing chores as a custom template pack."""

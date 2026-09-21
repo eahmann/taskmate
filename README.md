@@ -4,6 +4,8 @@
 
 <h1 align="center">TaskMate</h1>
 
+This fork adds [daily Routines built from ordinary chores](ROUTINES.md).
+
 <p align="center">
   <strong>Turn chores into a game your kids actually want to play.</strong><br>
   A Home Assistant integration for family chore management, rewards, and streak tracking.
@@ -53,18 +55,6 @@ The switch controls presentation, not backend authorization. Pair it with Dashbo
 Everything is managed from the **TaskMate panel** in the Home Assistant sidebar, and surfaced on your dashboards through 21 Lovelace cards.
 
 All data stays inside your Home Assistant instance. Nothing is sent to any external service.
-
-### Checklist chores (fork feature)
-
-In the chore editor, choose **Checklist**, add the required steps and their point values, and set the **Completion bonus**. Each step can have its own picture icon and description. Zero-point steps and a zero-point bonus are supported.
-
-Children tap the steps inside one grouped chore card. Each approved step pays its own points; when every step is approved, the chore finishes and pays its bonus automatically. There is no final claim button. With parent approval enabled, each step enters the approval queue. Optional sequential order waits for the earlier steps to be approved before unlocking the next.
-
-Progress is separate for each assigned child and resets each day. A checklist counts as one completed chore for streaks and chore-count challenges. Undoing a step removes its payout and the completion bonus, preserving the other steps' points. Reviews after midnight still apply to the submitted day. All steps submitted before a mandatory deadline count as submitted even while awaiting approval.
-
-Checklists work in all Child Card designs, including picture mode, and in the Routine Card. This first version supports one completion per child per day and individual assignment; photo proof, open-ended submissions, and rotation assignments are unavailable. Use the step buttons to complete a checklist; the generic parent completion button cannot bypass them. Existing standard chores retain their optional bonus subtasks.
-
-To preserve recorded awards, create a new chore when changing between a checklist and another task type after completions exist. Add, remove, or reorder steps before anyone starts that day and after pending reviews are resolved; names, pictures, descriptions, and point values remain editable. Point changes do not alter step submissions already awaiting approval. The completion bonus is saved when the final step is submitted, including any time or roulette bonus, so later review preserves that award too.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/tempus2016/taskmate/main/images/adminPanel.png" alt="TaskMate admin panel" width="700">

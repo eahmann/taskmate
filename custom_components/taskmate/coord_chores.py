@@ -47,25 +47,6 @@ _MONTH_STEPS = {"monthly": 1, "every_3_months": 3, "every_6_months": 6}
 class ChoresMixin:
     """Mixin providing chore CRUD and completion logic."""
 
-    @staticmethod
-    def _validate_checklist_chore(chore: Chore) -> None:
-        """Reject configurations that cannot represent one daily checklist."""
-        if chore.task_type != "checklist":
-            return
-        if not chore.bonus_subtasks:
-            raise ValueError("A checklist needs at least one step.")
-        step_ids = [step.id for step in chore.bonus_subtasks]
-        if len(set(step_ids)) != len(step_ids) or not all(step_ids):
-            raise ValueError("Checklist steps must have unique IDs.")
-        if any(not step.name.strip() or step.points < 0 for step in chore.bonus_subtasks):
-            raise ValueError("Checklist steps need a name and non-negative points.")
-        if chore.daily_limit != 1:
-            raise ValueError("Checklists can be completed once per child per day.")
-        if chore.require_photo or chore.open_ended:
-            raise ValueError("Checklist steps do not support photos or open-ended submissions.")
-        if chore.assignment_mode != "everyone":
-            raise ValueError("Checklists use individual progress for each assigned child.")
-
     async def async_add_chore(
         self,
         name: str,
@@ -495,18 +476,9 @@ class ChoresMixin:
 
     async def async_update_chore(self, chore: Chore) -> None:
         """Update a chore."""
-        self._validate_checklist_chore(chore)
         today = dt_util.as_local(dt_util.now()).date()
         # Capture pre-update state before storage is mutated below.
         existing = self.storage.get_chore(chore.id)
-        if existing and "checklist" in (existing.task_type, chore.task_type):
-            records = [c for c in self.storage.get_completions() if c.chore_id == chore.id]
-            if existing.task_type != chore.task_type and records:
-                raise ValueError("Create a new chore to change checklist type after completions have been recorded.")
-            if [s.id for s in existing.bonus_subtasks] != [s.id for s in chore.bonus_subtasks] and any(
-                not c.approved or dt_util.as_local(c.completed_at).date() == today for c in records
-            ):
-                raise ValueError("Finish reviewing this checklist and wait until tomorrow before changing its steps.")
         prev_entities = list(getattr(existing, "publish_calendar_entities", []) or []) if existing else []
         prev_name = (existing.name if existing else "") or ""
         prev_image = (getattr(existing, "image_url", "") or "") if existing else ""
@@ -581,6 +553,9 @@ class ChoresMixin:
         self.storage.remove_last_completed_for_chore(chore_id)
         # Strip chore from any task group it belonged to.
         self.storage.remove_chore_from_task_groups(chore_id)
+        for routine in self.storage.get_routines():
+            routine.members = [m for m in routine.members if m["chore_id"] != chore_id]
+            self.storage.save_routine(routine)
         # Drop queued scheduled changes (#675) — nothing left to apply them to.
         self.storage.remove_scheduled_changes_for_chore(chore_id)
         # Drop pending swap requests (#785), else they sit in the parent's
@@ -742,9 +717,6 @@ class ChoresMixin:
         child = self.get_child(child_id)
         if not child:
             raise ValueError(f"Child {child_id} not found")
-
-        if chore.task_type == "checklist":
-            raise ValueError("Complete the checklist steps; the chore finishes automatically.")
 
         # Security: photo_url must be one of OUR upload URLs
         # (/api/taskmate/photo/<uuid>.<ext>). The service accepts it as a free
@@ -909,6 +881,7 @@ class ChoresMixin:
 
         # Reserve the daily quota before awarding. Notification delivery is
         # deferred until this record and the associated balances are complete.
+        self._prepare_routine_runs(chore_id, child_id)
         self.storage.add_completion(completion)
 
         award_notifications = []
@@ -953,6 +926,8 @@ class ChoresMixin:
             if hasattr(self, "_async_evaluate_challenges"):
                 await self._async_evaluate_challenges(child_id, deferred_notifications=award_notifications)
 
+        await self._async_sync_routine_awards(completion, deferred_notifications=award_notifications)
+
         await self.storage.async_save()
 
         # Fire approval notification only if it stays pending
@@ -982,9 +957,6 @@ class ChoresMixin:
         chore = self.get_chore(chore_id)
         if not chore:
             raise ValueError(f"Chore {chore_id} not found")
-
-        if chore.task_type == "checklist":
-            raise ValueError("Complete the checklist steps; the chore finishes automatically.")
 
         if not getattr(chore, "enabled", True):
             raise ValueError(f"Chore '{chore.name}' is disabled")
@@ -1037,79 +1009,10 @@ class ChoresMixin:
 
         return completion
 
-    async def _async_complete_checklist_if_ready(self, chore, child_id, completed_at, award_notifications):
-        """Derive one parent completion from approved steps on the same local day.
-
-        No save, refresh or notification may yield until the step and derived
-        awards are fully recorded. A second tap therefore sees the reservation.
-        Delayed approval finishes the original day's checklist, never today's.
-        """
-        if chore.task_type != "checklist" or not chore.bonus_subtasks:
-            return None
-        day = dt_util.as_local(completed_at).date()
-        records = [
-            c
-            for c in self.storage.get_completions()
-            if c.chore_id == chore.id and c.child_id == child_id and dt_util.as_local(c.completed_at).date() == day
-        ]
-        if any(not c.bonus_subtask_id for c in records):
-            return None
-        approved_ids = {c.bonus_subtask_id for c in records if c.approved}
-        if not {s.id for s in chore.bonus_subtasks} <= approved_ids:
-            return None
-        # The last completed step defines the completion time, even when a
-        # parent reviews the submissions later or in a different order.
-        last_step = max((c for c in reversed(records) if c.approved), key=lambda c: c.completed_at)
-        finished_at = last_step.completed_at
-        child = self.get_child(child_id)
-        points = last_step.checklist_bonus_points
-        if points is None:
-            points = self._apply_time_adjustment(chore, self.effective_chore_points(chore), finished_at)
-        completion = ChoreCompletion(
-            chore_id=chore.id,
-            child_id=child_id,
-            completed_at=finished_at,
-            approved=True,
-            approved_at=dt_util.now(),
-            submitted_points=points,
-        )
-        self.storage.add_completion(completion)
-        completion.points_awarded = await self._award_points(
-            child,
-            points,
-            completion_date=day,
-            chore_id=chore.id,
-            deferred_notifications=award_notifications,
-        )
-        self.storage.update_completion(completion)
-        self.storage.rebuild_last_completed(chore.id, child_id)
-        if chore.schedule_mode == "one_shot":
-            if child_id not in chore.disabled_for:
-                chore.disabled_for.append(child_id)
-            self._check_one_shot_fully_disabled(chore)
-            self.storage.update_chore(chore)
-        self.hass.bus.async_fire(
-            "taskmate_chore_completed",
-            {
-                "child_id": child_id,
-                "child_name": child.name,
-                "chore_id": chore.id,
-                "chore_name": chore.name,
-                "points": points,
-                "difficulty": chore.difficulty,
-                "timestamp": finished_at.isoformat(),
-            },
-        )
-        if hasattr(self, "_async_advance_quests"):
-            await self._async_advance_quests(child_id, chore.id, deferred_notifications=award_notifications)
-        if hasattr(self, "_async_evaluate_challenges"):
-            await self._async_evaluate_challenges(child_id, deferred_notifications=award_notifications)
-        return completion
-
     async def async_complete_bonus_subtask(
         self, chore_id: str, bonus_subtask_id: str, child_id: str
     ) -> ChoreCompletion:
-        """Complete a required checklist step or an optional post-chore bonus."""
+        """Complete a bonus sub-task (only available after parent chore is completed today)."""
         chore = self.get_chore(chore_id)
         if not chore:
             raise ValueError(f"Chore {chore_id} not found")
@@ -1124,11 +1027,6 @@ class ChoresMixin:
 
         now = dt_util.now()
         today = dt_util.as_local(now).date()
-        is_checklist = chore.task_type == "checklist"
-        if is_checklist:
-            self._validate_checklist_chore(chore)
-            if not self._is_chore_completable_by_child(chore, child_id):
-                raise ValueError(f"Checklist '{chore.name}' is not available for {child.name} today.")
 
         # A bonus sub-task belongs to its parent chore's assignment. Availability
         # is deliberately NOT re-checked here — the parent chore being done today
@@ -1147,26 +1045,11 @@ class ChoresMixin:
             and dt_util.as_local(c.completed_at).date() == today
             for c in all_completions
         )
-        if is_checklist and parent_done_today:
-            raise ValueError(f"Checklist '{chore.name}' already completed today.")
-        if not is_checklist and not parent_done_today:
+        if not parent_done_today:
             raise ValueError(
                 f"Cannot complete bonus sub-task '{subtask.name}' — "
                 f"parent chore '{chore.name}' must be completed first today."
             )
-
-        if is_checklist and chore.checklist_sequential:
-            approved_ids = {
-                c.bonus_subtask_id
-                for c in all_completions
-                if c.chore_id == chore_id
-                and c.child_id == child_id
-                and c.approved
-                and dt_util.as_local(c.completed_at).date() == today
-            }
-            previous = chore.bonus_subtasks[: chore.bonus_subtasks.index(subtask)]
-            if any(step.id not in approved_ids for step in previous):
-                raise ValueError("Complete and approve the previous checklist steps first.")
 
         # Duplicate check: bonus sub-task not already completed today
         already_done = any(
@@ -1179,23 +1062,6 @@ class ChoresMixin:
         if already_done:
             raise ValueError(f"Bonus sub-task '{subtask.name}' already completed today.")
 
-        bonus_points = None
-        if is_checklist:
-            submitted = {
-                c.bonus_subtask_id
-                for c in all_completions
-                if c.chore_id == chore_id
-                and c.child_id == child_id
-                and dt_util.as_local(c.completed_at).date() == today
-            } | {bonus_subtask_id}
-            if {s.id for s in chore.bonus_subtasks} <= submitted:
-                bonus_points = self._apply_roulette_multiplier(
-                    chore,
-                    child_id,
-                    self._apply_speed_bonus(
-                        chore, self._apply_time_adjustment(chore, self.effective_chore_points(chore), now), now
-                    ),
-                )
         completion = ChoreCompletion(
             chore_id=chore_id,
             child_id=child_id,
@@ -1204,7 +1070,6 @@ class ChoresMixin:
             points_awarded=subtask.points if not chore.requires_approval else 0,
             submitted_points=subtask.points,
             bonus_subtask_id=bonus_subtask_id,
-            checklist_bonus_points=bonus_points,
         )
 
         # Reserve the bonus before awarding, as on the main completion path.
@@ -1213,20 +1078,12 @@ class ChoresMixin:
         award_notifications = []
         if not chore.requires_approval:
             total_awarded = await self._award_points(
-                child,
-                subtask.points,
-                skip_streak=True,
-                count_chore=not is_checklist,
-                deferred_notifications=award_notifications,
+                child, subtask.points, skip_streak=True, deferred_notifications=award_notifications
             )
             completion.approved = True
             completion.approved_at = dt_util.now()
             completion.points_awarded = total_awarded
             self.storage.update_completion(completion)
-            if is_checklist:
-                await self._async_complete_checklist_if_ready(chore, child_id, now, award_notifications)
-                if hasattr(self, "_async_evaluate_challenges"):
-                    await self._async_evaluate_challenges(child_id, deferred_notifications=award_notifications)
         await self.storage.async_save()
 
         if chore.requires_approval:
@@ -1235,8 +1092,6 @@ class ChoresMixin:
             )
 
         await self.async_refresh()
-        if is_checklist and not chore.requires_approval and getattr(self, "badges", None):
-            await self.badges.evaluate_for_child(child_id, "manual")
         await self._async_deliver_award_notifications(award_notifications)
         return completion
 
@@ -1269,8 +1124,6 @@ class ChoresMixin:
                 if chore and child:
                     comp_date = dt_util.as_local(completion.completed_at).date()
                     is_bonus = bool(completion.bonus_subtask_id)
-                    if chore.task_type == "checklist" and not is_bonus:
-                        raise ValueError("Approve the checklist steps; the chore finishes automatically.")
                     if completion.submitted_points is not None:
                         # Use the award promised at submission, including any
                         # speed/roulette bonus that may no longer be active.
@@ -1315,20 +1168,11 @@ class ChoresMixin:
                         pts,
                         completion_date=comp_date,
                         skip_streak=is_bonus,
-                        count_chore=not (is_bonus and chore.task_type == "checklist"),
                         chore_id=completion.chore_id,
                         deferred_notifications=award_notifications,
                     )
                     completion.points_awarded = total_awarded
                     self.storage.update_completion(completion)
-                    if is_bonus and chore.task_type == "checklist":
-                        await self._async_complete_checklist_if_ready(
-                            chore, completion.child_id, completion.completed_at, award_notifications
-                        )
-                        if hasattr(self, "_async_evaluate_challenges"):
-                            await self._async_evaluate_challenges(
-                                completion.child_id, deferred_notifications=award_notifications
-                            )
 
                     # Dismiss the mobile approval push now this completion is
                     # reviewed (covers single approve AND "approve all", which
@@ -1357,6 +1201,7 @@ class ChoresMixin:
 
                     # Finish progression before a refresh or badge notification
                     # can yield to an undo/reject of this approval.
+                    await self._async_sync_routine_awards(completion, deferred_notifications=award_notifications)
                     if not is_bonus and hasattr(self, "_async_advance_quests"):
                         await self._async_advance_quests(
                             completion.child_id, completion.chore_id, deferred_notifications=award_notifications
@@ -1408,29 +1253,7 @@ class ChoresMixin:
                 return
         _LOGGER.warning("Completion %s not found for approval", completion_id)
 
-    def _remove_checklist_parent_for_step(self, step, completions):
-        """Reverse a derived parent without disturbing the other step awards."""
-        chore = self.get_chore(step.chore_id)
-        if not step.bonus_subtask_id or not chore or chore.task_type != "checklist":
-            return None
-        day = dt_util.as_local(step.completed_at).date()
-        parent = next(
-            (
-                c
-                for c in completions
-                if c.chore_id == step.chore_id
-                and c.child_id == step.child_id
-                and not c.bonus_subtask_id
-                and dt_util.as_local(c.completed_at).date() == day
-            ),
-            None,
-        )
-        if parent:
-            self._reverse_completion_awards(parent, completions, cascade_subtasks=False)
-            self.storage.remove_completion(parent.id)
-        return parent
-
-    def _reverse_completion_awards(self, target_completion, completions, *, cascade_subtasks=True) -> list:
+    def _reverse_completion_awards(self, target_completion, completions) -> list:
         """Reverse every point/streak/counter award granted by an approved completion.
 
         Shared by ``async_reject_chore`` (which then deletes the record) and
@@ -1442,8 +1265,6 @@ class ChoresMixin:
         """
         completion = target_completion
         child = self.get_child(completion.child_id)
-        chore = self.get_chore(completion.chore_id)
-        is_checklist = chore and chore.task_type == "checklist"
         # Zero-point chores still increment the chore count and can advance a
         # streak. Approval, rather than a positive payout, identifies an award
         # that needs to be reversed; pending submissions have no awards yet.
@@ -1451,8 +1272,7 @@ class ChoresMixin:
             if child:
                 child.points = max(0, child.points - completion.points_awarded)
                 child.total_points_earned = max(0, child.total_points_earned - completion.points_awarded)
-                if not (is_checklist and completion.bonus_subtask_id):
-                    child.total_chores_completed = max(0, child.total_chores_completed - 1)
+                child.total_chores_completed = max(0, child.total_chores_completed - 1)
 
                 # Only reverse streak for parent completions, and only
                 # when this was the child's sole completion that day —
@@ -1516,7 +1336,6 @@ class ChoresMixin:
             bonus_completions = [
                 c
                 for c in completions
-                if cascade_subtasks
                 if c.chore_id == target_completion.chore_id
                 and c.child_id == target_completion.child_id
                 and c.bonus_subtask_id
@@ -1528,17 +1347,10 @@ class ChoresMixin:
                     if bc.approved and child:
                         child.points = max(0, child.points - bc.points_awarded)
                         child.total_points_earned = max(0, child.total_points_earned - bc.points_awarded)
-                        if not is_checklist:
-                            child.total_chores_completed = max(0, child.total_chores_completed - 1)
+                        child.total_chores_completed = max(0, child.total_chores_completed - 1)
 
-            # A checklist can be reviewed out of order across days. Rebuild
-            # from surviving parents instead of popping the newest anchor.
-            if is_checklist:
-                self.storage.rebuild_last_completed(
-                    completion.chore_id, completion.child_id, excluding_id=completion.id
-                )
-            else:
-                self.storage.undo_last_completed(target_completion.chore_id, target_completion.child_id)
+            # Undo last_completed store so recurrence window resets correctly
+            self.storage.undo_last_completed(target_completion.chore_id, target_completion.child_id)
 
             # One-shot: re-enable for this child
             chore = self.get_chore(target_completion.chore_id)
@@ -1562,18 +1374,14 @@ class ChoresMixin:
         completions = self.storage.get_completions()
         target_completion = next((c for c in completions if c.id == completion_id), None)
 
-        derived_parent = None
         if target_completion:
-            derived_parent = self._remove_checklist_parent_for_step(target_completion, completions)
-            if derived_parent:
-                completions = [c for c in completions if c.id != derived_parent.id]
             bonus_completions = self._reverse_completion_awards(target_completion, completions)
             for bc in bonus_completions:
                 self.storage.remove_completion(bc.id)
 
         self.storage.remove_completion(completion_id)
-        if derived_parent and hasattr(self, "_async_rewind_quests"):
-            await self._async_rewind_quests(derived_parent.child_id, derived_parent.chore_id)
+        if target_completion:
+            await self._async_sync_routine_awards(target_completion)
         if target_completion and target_completion.approved and not target_completion.bonus_subtask_id:
             # Same as undo: a rejected completion must not leave the quest
             # chain standing on the step it unlocked.
@@ -1632,9 +1440,6 @@ class ChoresMixin:
         if not target.approved:
             raise ValueError("Completion is not approved; nothing to undo")
 
-        derived_parent = self._remove_checklist_parent_for_step(target, completions)
-        if derived_parent:
-            completions = [c for c in completions if c.id != derived_parent.id]
         bonus_completions = self._reverse_completion_awards(target, completions)
         for bc in bonus_completions:
             bc.approved = False
@@ -1645,15 +1450,8 @@ class ChoresMixin:
         target.approved = False
         target.approved_at = None
         target.points_awarded = 0
-        chore = self.get_chore(target.chore_id)
-        if chore and chore.task_type == "checklist" and not target.bonus_subtask_id:
-            # The parent is derived, never a separate item in the review queue.
-            self.storage.remove_completion(target.id)
-        else:
-            self.storage.update_completion(target)
-
-        if derived_parent and hasattr(self, "_async_rewind_quests"):
-            await self._async_rewind_quests(derived_parent.child_id, derived_parent.chore_id)
+        self.storage.update_completion(target)
+        await self._async_sync_routine_awards(target)
 
         # Quest progress advanced on approval, so it has to come back too —
         # otherwise re-approving the same completion advances the chain a

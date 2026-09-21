@@ -50,6 +50,7 @@ class PointsMixin:
         last_week_dates = {(last_monday + timedelta(days=i)).isoformat() for i in range(7)}
         week_key = last_monday.isoformat()
 
+        all_completions = self.storage.get_completions()
         children = self.storage.get_children()
         chores = [c for c in self.storage.get_chores() if getattr(c, "enabled", True)]
         changed = False
@@ -86,9 +87,17 @@ class PointsMixin:
 
             # Get all days this child had at least one completion last week
             # (count both approved and pending — don't penalise for slow parent approval)
-            completed_days = {
-                day for day in last_week_dates if self._completed_chore_ids_for_child(child.id, date.fromisoformat(day))
-            }
+            completed_days = set()
+            for comp in all_completions:
+                if comp.child_id != child.id:
+                    continue
+                try:
+                    comp_local = dt_util.as_local(comp.completed_at)
+                    comp_date_str = comp_local.date().isoformat()
+                    if comp_date_str in last_week_dates:
+                        completed_days.add(comp_date_str)
+                except (ValueError, TypeError, AttributeError):
+                    continue
 
             # If no scheduled days can be derived (e.g. rotation-only setups),
             # fall back to requiring a completion on all 7 days as before
@@ -706,23 +715,14 @@ class PointsMixin:
         """Chore IDs the child has a (non-bonus) completion for on ``day`` —
         approved or pending, so slow parent approval doesn't break the day."""
         out: set[str] = set()
-        submitted_steps: dict[str, set[str]] = {}
         for c in self.storage.get_completions():
-            if c.child_id != child_id:
+            if c.child_id != child_id or getattr(c, "bonus_subtask_id", ""):
                 continue
             try:
                 if dt_util.as_local(c.completed_at).date() == day:
-                    if c.bonus_subtask_id:
-                        submitted_steps.setdefault(c.chore_id, set()).add(c.bonus_subtask_id)
-                    else:
-                        out.add(c.chore_id)
+                    out.add(c.chore_id)
             except (ValueError, TypeError, AttributeError):
                 continue
-        for chore_id, submitted in submitted_steps.items():
-            chore = self.storage.get_chore(chore_id)
-            if chore and chore.task_type == "checklist" and chore.bonus_subtasks:
-                if {step.id for step in chore.bonus_subtasks} <= submitted:
-                    out.add(chore_id)
         return out
 
     def _all_due_chores_done(
@@ -749,7 +749,6 @@ class PointsMixin:
         skip_streak: bool = False,
         chore_id: str | None = None,
         *,
-        count_chore: bool = True,
         deferred_notifications: AwardNotifications | None = None,
     ) -> int:
         """Award points to a child, update streak, and apply bonus systems.
@@ -784,8 +783,7 @@ class PointsMixin:
         total_points = points + weekend_bonus
         child.points += total_points
         child.total_points_earned += total_points
-        if count_chore:
-            child.total_chores_completed += 1
+        child.total_chores_completed += 1
         child.career_score = child.total_points_earned - child.total_penalties_received
 
         if weekend_bonus > 0:
@@ -827,25 +825,6 @@ class PointsMixin:
                 child.streak_paused = False
             elif last_date_str == effective_date_str:
                 pass  # Already completed on this date — streak unchanged
-            elif last_date_str > effective_date_str:
-                # Delayed review can fill a gap behind the most recent day.
-                # Keep that day's anchor and recover the contiguous run rather
-                # than moving the streak backwards to the approval's day.
-                approved_days = {
-                    dt_util.as_local(c.completed_at).date()
-                    for c in self.storage.get_completions()
-                    if c.child_id == child.id and c.approved and not c.bonus_subtask_id
-                }
-                cursor = date.fromisoformat(last_date_str)
-                run = 0
-                while cursor in approved_days:
-                    if self._setting_enabled("streak_requires_all_chores") and not self._all_due_chores_done(
-                        child.id, cursor, include_rotation=True
-                    ):
-                        break
-                    run += 1
-                    cursor -= timedelta(days=1)
-                child.current_streak = max(streak_before, run)
             else:
                 try:
                     last_date = date.fromisoformat(last_date_str)
@@ -869,7 +848,7 @@ class PointsMixin:
                     child.streak_paused = False
                     streak_reset_occurred = True
 
-            child.last_completion_date = max(last_date_str or effective_date_str, effective_date_str)
+            child.last_completion_date = effective_date_str
 
             if child.current_streak > (child.best_streak or 0):
                 child.best_streak = child.current_streak
@@ -974,12 +953,29 @@ class PointsMixin:
         all_completions = self.storage.get_completions()
         before = len(all_completions)
 
+        # Retain the whole routine day while any of its submissions can still
+        # be reviewed. Pruning an approved sibling of a pending item would
+        # otherwise make its eventual bonus impossible to earn.
+        runs = self.storage.get_routine_runs()
+        pending_days = {
+            (c.child_id, dt_util.as_local(c.completed_at).date().isoformat()) for c in all_completions if not c.approved
+        }
+        cutoff_day = dt_util.as_local(cutoff).date().isoformat()
+        keep_runs = [r for r in runs if r["day"] >= cutoff_day or (r["child_id"], r["day"]) in pending_days]
+        routine_days = {(r["child_id"], r["day"]) for r in keep_runs}
         # Keep completions newer than cutoff OR unapproved (pending)
-        to_keep = [c for c in all_completions if c.completed_at >= cutoff or not c.approved]
+        to_keep = [
+            c
+            for c in all_completions
+            if c.completed_at >= cutoff
+            or not c.approved
+            or (c.child_id, dt_util.as_local(c.completed_at).date().isoformat()) in routine_days
+        ]
 
-        if len(to_keep) < before:
+        if len(to_keep) < before or len(keep_runs) < len(runs):
             kept_ids = {c.id for c in to_keep}
             self.storage.replace_completions(to_keep)
+            self.storage._data["routine_runs"] = keep_runs
             await self.storage.async_save()
             # Delete evidence photos belonging to the pruned completions so the
             # photos dir doesn't grow forever (best-effort; foreign/blank URLs

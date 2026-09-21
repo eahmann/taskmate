@@ -30,6 +30,7 @@ from .models import (
     Quest,
     Reward,
     RewardClaim,
+    Routine,
     ScheduledChange,
     TaskGroup,
     TimedSession,
@@ -177,6 +178,8 @@ class TaskMateStorage:
             "points_transactions": [],
             "pool_allocations": [],
             "task_groups": [],
+            "routines": [],
+            "routine_runs": [],
             "badges": [],
             "awarded_badges": [],
             "timed_sessions": [],
@@ -957,6 +960,49 @@ class TaskMateStorage:
         s["mandatory_escalation_parent_minutes"] = max(1, int(parent_minutes))
 
     # Task groups management
+    def get_routines(self) -> list[Routine]:
+        return [Routine.from_dict(r) for r in self._data.get("routines", [])]
+
+    def get_routine(self, routine_id: str) -> Routine | None:
+        return next((r for r in self.get_routines() if r.id == routine_id), None)
+
+    def save_routine(self, routine: Routine) -> None:
+        records = self._data.setdefault("routines", [])
+        for i, record in enumerate(records):
+            if record["id"] == routine.id:
+                records[i] = routine.to_dict()
+                return
+        records.append(routine.to_dict())
+
+    def remove_routine(self, routine_id: str) -> None:
+        self._data["routines"] = [r for r in self._data.get("routines", []) if r["id"] != routine_id]
+
+    def get_routine_runs(self) -> list[dict]:
+        from copy import deepcopy
+
+        return deepcopy(self._data.get("routine_runs", []))
+
+    def get_routine_run(self, routine_id: str, child_id: str, day: str) -> dict | None:
+        return next(
+            (
+                r
+                for r in self.get_routine_runs()
+                if (r["routine_id"], r["child_id"], r["day"]) == (routine_id, child_id, day)
+            ),
+            None,
+        )
+
+    def save_routine_run(self, run: dict) -> None:
+        from copy import deepcopy
+
+        records = self._data.setdefault("routine_runs", [])
+        key = (run["routine_id"], run["child_id"], run["day"])
+        for i, record in enumerate(records):
+            if (record["routine_id"], record["child_id"], record["day"]) == key:
+                records[i] = deepcopy(run)
+                return
+        records.append(deepcopy(run))
+
     def get_task_groups(self) -> list[TaskGroup]:
         """Get all task groups."""
         return [TaskGroup.from_dict(g) for g in self._data.get("task_groups", [])]
@@ -1305,6 +1351,7 @@ class TaskMateStorage:
 
         if not isinstance(data, dict):
             raise ValueError("import data must be an object")
+        self._validate_routine_backup(data)
         self._data = copy.deepcopy(data)
         list_keys = (
             "children",
@@ -1313,6 +1360,8 @@ class TaskMateStorage:
             "penalties",
             "bonuses",
             "task_groups",
+            "routines",
+            "routine_runs",
             "completions",
             "mandatory_misses",
             "reward_claims",
@@ -1336,6 +1385,54 @@ class TaskMateStorage:
         if not isinstance(self._data.get("challenge_progress"), dict):
             self._data["challenge_progress"] = {}
         self._sanitize_imported_records()
+
+    @staticmethod
+    def _validate_routine_backup(data: dict) -> None:
+        """Reject malformed routine ledgers before replacing any live data."""
+        import voluptuous as vol
+
+        member = {vol.Required("chore_id"): str, vol.Required("required"): bool}
+        routine = vol.Schema(
+            {
+                vol.Required("id"): str,
+                vol.Required("name"): str,
+                vol.Required("members"): [member],
+                vol.Optional("description"): str,
+                vol.Optional("icon"): str,
+                vol.Optional("active"): bool,
+                vol.Required("bonus_points"): vol.All(int, vol.Range(min=0, max=1000000)),
+                vol.Optional("defaults"): {
+                    vol.Optional("assigned_to"): [str],
+                    vol.Optional("due_days"): [str],
+                    vol.Optional("time_category"): str,
+                    vol.Optional("requires_approval"): bool,
+                },
+            }
+        )
+        run = vol.Schema(
+            {
+                vol.Required("routine_id"): str,
+                vol.Required("child_id"): str,
+                vol.Required("day"): str,
+                vol.Required("name"): str,
+                vol.Required("members"): [member],
+                vol.Required("awarded"): bool,
+                vol.Required("bonus_points"): vol.All(int, vol.Range(min=0, max=1000000)),
+            }
+        )
+        try:
+            routines = vol.Schema([routine])(data.get("routines", []))
+            runs = vol.Schema([run])(data.get("routine_runs", []))
+            chore_ids = [m["chore_id"] for r in routines for m in r["members"]]
+            if len(chore_ids) != len(set(chore_ids)):
+                raise ValueError("A chore can belong to only one routine")
+            keys = [(r["routine_id"], r["child_id"], r["day"]) for r in runs]
+            if len(keys) != len(set(keys)):
+                raise ValueError("Duplicate routine bonus record")
+            for record in runs:
+                date.fromisoformat(record["day"])
+        except (vol.Invalid, ValueError) as err:
+            raise ValueError(f"Invalid routine backup: {err}") from err
 
     def _sanitize_imported_records(self) -> None:
         """Re-validate untrusted inner records after a full-replace import (SEC-5).
@@ -1673,29 +1770,6 @@ class TaskMateStorage:
             "current": completed_at_iso,
             "previous": current,  # may be None
         }
-
-    def rebuild_last_completed(self, chore_id: str, child_id: str, *, excluding_id: str = "") -> None:
-        """Keep the newest two approved parent timestamps after an out-of-order review."""
-        stamps = sorted(
-            (
-                c.completed_at
-                for c in self.get_completions()
-                if c.chore_id == chore_id
-                and c.child_id == child_id
-                and c.approved
-                and not c.bonus_subtask_id
-                and c.id != excluding_id
-            ),
-            reverse=True,
-        )
-        records = self._data.setdefault("last_completed", {}).setdefault(chore_id, {})
-        if stamps:
-            records[child_id] = {
-                "current": stamps[0].isoformat(),
-                "previous": stamps[1].isoformat() if len(stamps) > 1 else None,
-            }
-        else:
-            records.pop(child_id, None)
 
     def undo_last_completed(self, chore_id: str, child_id: str) -> None:
         """Undo the most recent completion — restores previous as current."""

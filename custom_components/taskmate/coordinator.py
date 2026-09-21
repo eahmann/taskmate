@@ -30,6 +30,7 @@ from .coord_quests import QuestsMixin
 from .coord_reports import ReportsMixin
 from .coord_rewards import RewardsMixin
 from .coord_roulette import RouletteMixin
+from .coord_routines import RoutinesMixin
 from .coord_scheduled import ScheduledChangesMixin
 from .coord_sounds import SoundsMixin
 from .coord_templates import TemplatesMixin
@@ -49,6 +50,7 @@ class TaskMateCoordinator(
     RewardsMixin,
     PointsMixin,
     QuestsMixin,
+    RoutinesMixin,
     AvatarsMixin,
     ChallengesMixin,
     TimedMixin,
@@ -921,6 +923,12 @@ class TaskMateCoordinator(
         self.storage.remove_pool_allocations_for_child(child_id)
         self.storage.remove_career_score_history_for_child(child_id)
         self.storage.remove_quest_progress_for_child(child_id)
+        self.storage._data["routine_runs"] = [r for r in self.storage.get_routine_runs() if r["child_id"] != child_id]
+        for routine in self.storage.get_routines():
+            routine.defaults["assigned_to"] = [
+                cid for cid in routine.defaults.get("assigned_to", []) if cid != child_id
+            ]
+            self.storage.save_routine(routine)
         self.storage.remove_challenge_progress_for_child(child_id)
         # Drop pending swap requests either side of this child (#785) — a
         # handover to or from a deleted child can never complete, and the

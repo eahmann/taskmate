@@ -52,8 +52,6 @@ class TaskMateRoutineCard extends LitElement {
     this._runCompleted = new Map();
     // Tasks the child chose to leave for later. Kept for this run only.
     this._skipped = new Set();
-    this._runSteps = new Map();
-    this._runVersion = 0;
   }
 
   setConfig(config) {
@@ -63,7 +61,6 @@ class TaskMateRoutineCard extends LitElement {
       throw new Error(`time_category must be one of: ${TIME_CATEGORIES.join(", ")}`);
     }
     this.config = config;
-    this._syncRunContext();
   }
 
   getCardSize() { return 8; }
@@ -73,11 +70,10 @@ class TaskMateRoutineCard extends LitElement {
   }
 
   shouldUpdate(changedProps) {
-    const contextChanged = this._syncRunContext();
     if (changedProps.has("hass")) {
-      return contextChanged || (window.__taskmate_hasChanged
+      return window.__taskmate_hasChanged
         ? window.__taskmate_hasChanged(changedProps.get("hass"), this.hass, this.config?.entity)
-        : true);
+        : true;
     }
     return true;
   }
@@ -90,38 +86,6 @@ class TaskMateRoutineCard extends LitElement {
   _attrs() {
     return (window.__taskmate_attrs && window.__taskmate_attrs(this.hass, this.config.entity))
       || this.hass?.states?.[this.config.entity]?.attributes || {};
-  }
-
-  _localDay(date = new Date()) {
-    return date.toLocaleDateString('en-CA', {
-      timeZone: this.hass?.config?.time_zone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-    });
-  }
-
-  _todaysCompletions() {
-    const today = this._localDay();
-    return (this._attrs().todays_completions || []).filter(c =>
-      !c.completed_at || this._localDay(new Date(c.completed_at)) === today);
-  }
-
-  _syncRunContext() {
-    if (!this.hass || !this.config) return false;
-    const context = JSON.stringify([this.config.entity, this.config.child_id, this._localDay()]);
-    if (context === this._runContext) return false;
-    const changed = this._runContext !== undefined;
-    this._runContext = context;
-    if (changed) this._resetRun();
-    return changed;
-  }
-
-  _resetRun() {
-    this._runVersion++;
-    this._index = 0;
-    this._finished = false;
-    this._busy = false;
-    this._runCompleted = new Map();
-    this._skipped = new Set();
-    this._runSteps = new Map();
   }
 
   /**
@@ -171,7 +135,7 @@ class TaskMateRoutineCard extends LitElement {
     const period = this.config.time_category || "all";
 
     const completedToday = new Set(
-      this._todaysCompletions()
+      (attrs.todays_completions || [])
         .filter(c => String(c.child_id) === childId && !c.bonus_subtask_id)
         .map(c => String(c.chore_id))
     );
@@ -180,7 +144,7 @@ class TaskMateRoutineCard extends LitElement {
     const list = (attrs.chores || []).filter(chore => {
       const id = String(chore.id);
       // Anything finished in this run stays visible as a completed step.
-      if (this._runCompleted.has(id) || this._runSteps.has(id)) return true;
+      if (this._runCompleted.has(id)) return true;
       if (!availability[id] || availability[id][childId] !== true) return false;
       if (completedToday.has(id)) return false;
       if (period !== "all" && chore.time_category !== period) return false;
@@ -203,11 +167,6 @@ class TaskMateRoutineCard extends LitElement {
   }
 
   async _complete(chore) {
-    this._syncRunContext();
-    const version = this._runVersion;
-    // Checklists finish on the server after their required steps; they never
-    // use a parent Done/claim button.
-    if (chore.task_type === 'checklist') return;
     if (this._busy) return;
     const child = this._child();
     if (!child) return;
@@ -225,8 +184,6 @@ class TaskMateRoutineCard extends LitElement {
           chore_id: chore.id, child_id: child.id,
         });
       }
-      this._syncRunContext();
-      if (version !== this._runVersion) return;
       this._runCompleted.set(String(chore.id), {
         points: this._pointsFor(chore),
         pending: chore.requires_approval !== false,
@@ -237,30 +194,29 @@ class TaskMateRoutineCard extends LitElement {
       this._advance();
     } catch (err) {
       // Surface rather than silently stalling the routine on a failed call.
-      this._syncRunContext();
-      if (version !== this._runVersion) return;
       this.dispatchEvent(new CustomEvent("hass-notification", {
         detail: { message: String(err?.message || err) }, bubbles: true, composed: true,
       }));
     } finally {
-      if (version === this._runVersion) {
-        this._busy = false;
-        this.requestUpdate();
-      }
+      this._busy = false;
+      this.requestUpdate();
     }
   }
 
   _advance() {
-    const next = this._tasks().findIndex(t => !this._runCompleted.has(String(t.id)) && !this._skipped.has(String(t.id)));
-    this._finished = next === -1;
-    if (next !== -1) this._index = next;
+    const total = this._tasks().length;
+    if (this._index >= total - 1) {
+      this._finished = true;
+    } else {
+      this._index = this._index + 1;
+    }
     this.requestUpdate();
   }
 
   _skip() {
     const tasks = this._tasks();
     const chore = tasks[this._index];
-    if (chore && !this._runCompleted.has(String(chore.id))) this._skipped.add(String(chore.id));
+    if (chore) this._skipped.add(String(chore.id));
     this._advance();
   }
 
@@ -271,123 +227,15 @@ class TaskMateRoutineCard extends LitElement {
   }
 
   _restart() {
-    this._resetRun();
+    this._index = 0;
+    this._finished = false;
+    this._runCompleted = new Map();
+    this._skipped = new Set();
     this.requestUpdate();
-  }
-
-  _checklistState(chore) {
-    const childId = String(this.config.child_id);
-    const records = this._todaysCompletions().filter(c => String(c.child_id) === childId && c.chore_id === chore.id);
-    const parent = records.find(c => !c.bonus_subtask_id);
-    const bonusSubmission = records.filter(c => c.bonus_subtask_id && c.checklist_bonus_points != null)
-      .sort((a, b) => (new Date(b.completed_at).getTime() || 0) - (new Date(a.completed_at).getTime() || 0))[0];
-    const bonusPoints = (parent?.approved ? parent.points : null)
-      ?? bonusSubmission?.checklist_bonus_points ?? this._pointsFor(chore);
-    const submitted = this._runSteps.get(String(chore.id));
-    const available = this._attrs().chore_availability?.[chore.id]?.[childId] === true;
-    const steps = (chore.bonus_subtasks || []).map(step => {
-      const record = records.find(c => c.bonus_subtask_id === step.id);
-      const optimistic = submitted?.get(step.id);
-      // Once the server has published a submission, let its state control the
-      // tile (including rejection/undo), rather than keeping an optimistic tick.
-      if (record && optimistic) optimistic.confirmed = true;
-      const pending = !!record && !record.approved || !record && !!optimistic && !optimistic.confirmed;
-      return { step, record, done: record?.approved === true, pending };
-    });
-    steps.forEach((s, i) => {
-      s.orderLocked = !!chore.checklist_sequential && steps.slice(0, i).some(previous => !previous.done);
-      s.locked = !available || !!parent || s.orderLocked;
-    });
-    return { steps, parent, bonusPoints, allSubmitted: steps.length > 0 && steps.every(s => s.done || s.pending) };
-  }
-
-  _syncChecklists() {
-    const newlyCompleted = new Set();
-    for (const chore of this._attrs().chores || []) {
-      if (chore.task_type !== 'checklist' || !this._runSteps.has(String(chore.id))) continue;
-      const state = this._checklistState(chore);
-      if (state.allSubmitted || state.parent) {
-        if (!this._runCompleted.has(String(chore.id))) newlyCompleted.add(String(chore.id));
-        let earned = state.parent?.approved ? state.bonusPoints : 0;
-        let pendingPoints = state.parent?.approved ? 0 : state.bonusPoints;
-        for (const s of state.steps) {
-          if (!this._runSteps.get(String(chore.id)).has(s.step.id)) continue;
-          const points = s.record?.points ?? s.step.points ?? 0;
-          if (s.done) earned += points; else if (s.pending) pendingPoints += points;
-        }
-        this._runCompleted.set(String(chore.id), {
-          points: earned, pendingPoints,
-          pending: state.parent?.approved !== true,
-        });
-      } else {
-        this._runCompleted.delete(String(chore.id));
-      }
-    }
-    return newlyCompleted;
-  }
-
-  async _completeChecklistStep(chore, step) {
-    this._syncRunContext();
-    const version = this._runVersion;
-    const state = this._checklistState(chore).steps.find(s => s.step.id === step.id);
-    if (this._busy || !state || state.done || state.pending || state.locked) return;
-    this._busy = true;
-    this.requestUpdate();
-    try {
-      await this.hass.callService('taskmate', 'complete_bonus_subtask', {
-        chore_id: chore.id, child_id: this.config.child_id, bonus_subtask_id: step.id,
-      });
-      this._syncRunContext();
-      if (version !== this._runVersion) return;
-      const id = String(chore.id);
-      if (!this._runSteps.has(id)) this._runSteps.set(id, new Map());
-      this._runSteps.get(id).set(step.id, { confirmed: false });
-      this._skipped.delete(id);
-      this._syncChecklists();
-      if (this._runCompleted.has(id)) this._advance();
-    } catch (err) {
-      this._syncRunContext();
-      if (version !== this._runVersion) return;
-      this.dispatchEvent(new CustomEvent('hass-notification', {
-        detail: { message: String(err?.message || err) }, bubbles: true, composed: true,
-      }));
-    } finally {
-      if (version === this._runVersion) {
-        this._busy = false;
-        this.requestUpdate();
-      }
-    }
-  }
-
-  _renderChecklist(chore, pointsIcon) {
-    const state = this._checklistState(chore);
-    return html`
-      <div class="rt-checklist" aria-label="${chore.name}">
-        <div class="count" aria-live="polite">${this._t('child.checklist_progress', { done: state.steps.filter(s => s.done).length, total: state.steps.length })}</div>
-        <div class="rt-steps">
-          ${state.steps.map(s => html`
-            <button class="rt-step ${s.done ? 'done' : s.pending ? 'pending' : ''}" data-step-id="${s.step.id}"
-              ?disabled=${this._busy || s.done || s.pending || s.locked}
-              aria-label="${s.step.name}"
-              @click=${() => this._completeChecklistStep(chore, s.step)}>
-              <ha-icon class="rt-step-picture" icon="${s.step.icon || 'mdi:checkbox-marked-circle-outline'}"></ha-icon>
-              <strong>${s.step.name}</strong>
-              ${s.step.description ? html`<span>${s.step.description}</span>` : ''}
-              <span class="points"><ha-icon icon="${pointsIcon}"></ha-icon> +${s.step.points ?? 0}</span>
-              <span class="rt-step-state"><ha-icon icon="${s.done ? 'mdi:check-circle' : s.pending ? 'mdi:timer-sand' : s.locked ? 'mdi:lock-outline' : 'mdi:checkbox-blank-circle-outline'}"></ha-icon>
-                ${s.pending ? this._t('child.checklist_waiting') : s.done ? this._t('routine.completed') : s.orderLocked ? this._t('child.checklist_step_locked') : s.locked ? this._t('child.chore_locked_until_generic') : ''}
-              </span>
-            </button>`)}
-        </div>
-        <div class="note">${state.parent?.approved
-          ? this._t('child.checklist_bonus_earned', { points: state.bonusPoints })
-          : this._t('child.checklist_bonus', { points: state.bonusPoints })}</div>
-      </div>`;
   }
 
   render() {
     if (!this.hass || !this.config) return html``;
-    this._syncRunContext();
     this._applyDesign();
     const child = this._child();
     if (!child) {
@@ -396,21 +244,11 @@ class TaskMateRoutineCard extends LitElement {
 
     const attrs = this._attrs();
     const pointsIcon = attrs.points_icon || "mdi:star";
-    const newlyCompleted = this._syncChecklists();
     const tasks = this._tasks();
     const title = this.config.title || this._t("routine.title", { name: child.name });
 
     if (!tasks.length) return this._renderEmpty(title);
-    const current = tasks[Math.min(this._index, tasks.length - 1)];
-    if (!this._finished && newlyCompleted.has(String(current.id))) this._advance();
-    // Service calls can resolve before the next HA state update unlocks a
-    // dependent chore. Reopen the flow when that newly available task arrives.
-    if (this._finished) {
-      const next = tasks.findIndex(t => !this._runCompleted.has(String(t.id)) && !this._skipped.has(String(t.id)));
-      if (next === -1) return this._renderFinished(title, tasks, pointsIcon, child);
-      this._finished = false;
-      this._index = next;
-    }
+    if (this._finished) return this._renderFinished(title, tasks, pointsIcon, child);
 
     // Guard against the list shrinking underneath us (a parent ticking a chore
     // off elsewhere) — clamp rather than render undefined.
@@ -445,15 +283,15 @@ class TaskMateRoutineCard extends LitElement {
           })()}
           <div class="task">${chore.name}</div>
           ${chore.description ? html`<div class="desc">${chore.description}</div>` : ""}
-          ${chore.task_type === 'checklist' ? this._renderChecklist(chore, pointsIcon) : html`<div class="points">
+          <div class="points">
             <ha-icon icon="${pointsIcon}"></ha-icon> +${this._pointsFor(chore)}
-          </div>`}
+          </div>
           ${done?.pending ? html`<div class="pending">${this._t("routine.waiting_for_parent")}</div>` : ""}
           ${chore.require_photo ? html`<div class="note">${this._t("routine.photo_note")}</div>` : ""}
         </div>
 
         <div class="foot">
-          ${chore.task_type === 'checklist' ? '' : done
+          ${done
             ? html`<button class="rt-btn rt-done is-done" disabled>
                      ${done.pending ? this._t("routine.sent_for_checking") : this._t("routine.completed")}
                    </button>`
@@ -491,10 +329,7 @@ class TaskMateRoutineCard extends LitElement {
     let earned = 0;
     let pending = 0;
     for (const entry of this._runCompleted.values()) {
-      if (entry.pendingPoints !== undefined) {
-        earned += entry.points;
-        pending += entry.pendingPoints;
-      } else if (entry.pending) pending += entry.points; else earned += entry.points;
+      if (entry.pending) pending += entry.points; else earned += entry.points;
     }
     const skipped = this._skipped.size;
 
@@ -652,19 +487,6 @@ class TaskMateRoutineCard extends LitElement {
         font-weight: 700; font-size: 12.5px;
       }
       .note { font-size: 12.5px; color: var(--tmd-dim, var(--secondary-text-color)); }
-      .rt-checklist { width: 100%; display: grid; gap: 14px; }
-      .rt-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
-      .rt-step {
-        display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 10px;
-        border: 2px solid var(--tmd-border, var(--divider-color, #ddd)); border-radius: var(--tmd-radius-sm, 20px);
-        background: var(--tmd-surface, var(--card-background-color, #fff)); color: inherit; font: inherit; cursor: pointer;
-      }
-      .rt-step:focus-visible { outline: 3px solid var(--routine-accent); outline-offset: 3px; }
-      .rt-step:disabled { cursor: default; }
-      .rt-step.done { border-color: var(--tmd-good, #16a34a); }
-      .rt-step.pending { border-color: var(--tmd-warn, #f59e0b); }
-      .rt-step-picture { --mdc-icon-size: 48px; color: var(--routine-accent); }
-      .rt-step-state { display: flex; align-items: center; gap: 5px; font-size: 12px; }
 
       .foot { padding: 14px 20px 20px; display: flex; flex-direction: column; gap: 10px; }
       .rt-btn {
