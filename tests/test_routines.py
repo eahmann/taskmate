@@ -190,7 +190,7 @@ def test_model_round_trip_preserves_members_and_defaults_without_aliasing():
     assert routine.members[0]["required"] is False
 
 
-@pytest.mark.parametrize("overnight", [False, True])
+@pytest.mark.parametrize("overnight", [False, "midnight_cleanup", "manual_stop"])
 @pytest.mark.parametrize("approval", [False, True])
 def test_timed_member_uses_original_day_and_normal_approval(overnight, approval):
     async def scenario():
@@ -205,7 +205,7 @@ def test_timed_member_uses_original_day_and_normal_approval(overnight, approval)
             await coord.async_start_timed_task(chores[0].id, child.id)
         stop = start + timedelta(minutes=3 if overnight else 1)
         with patch("custom_components.taskmate.coord_routines.dt_util.now", return_value=stop):
-            if overnight:
+            if overnight == "midnight_cleanup":
                 await coord._async_stop_stale_timed_sessions()
             else:
                 await coord.async_stop_timed_task(chores[0].id, child.id)
@@ -234,6 +234,28 @@ def test_pruning_preserves_pending_routine_siblings_then_discards_settled_histor
             await coord.async_prune_history(90)
             assert store.get_routine_runs() == []
             assert store.get_completions() == []
+
+    run(scenario)
+
+
+def test_start_after_midnight_settles_stale_timer_before_new_day():
+    async def scenario():
+        coord, store, child, chores, rid = await setup(approval=False)
+        chores[0].task_type = "timed"
+        chores[0].timed_rate_minutes = 1
+        chores[0].timed_rate_points = 1
+        store.update_chore(chores[0])
+        await coord.async_save_routine(rid, members=[{"chore_id": chores[0].id, "required": True}])
+        with patch(
+            "custom_components.taskmate.coord_routines.dt_util.now", return_value=NOW.replace(hour=23, minute=58)
+        ):
+            await coord.async_start_timed_task(chores[0].id, child.id)
+        tomorrow = NOW + timedelta(days=1)
+        with patch("custom_components.taskmate.coord_routines.dt_util.now", return_value=tomorrow):
+            await coord.async_start_timed_task(chores[0].id, child.id)
+            assert store.get_child(child.id).points == 6
+            assert store.get_active_timed_session(chores[0].id, child.id).session_date == tomorrow.date().isoformat()
+            assert len(store.get_routine_runs()) == 2
 
     run(scenario)
 

@@ -36,6 +36,9 @@ class TimedMixin:
         cap_seconds = chore.timed_max_daily_minutes * 60 if chore.timed_max_daily_minutes > 0 else 0
 
         existing = self.storage.get_active_timed_session(chore_id, child_id)
+        if existing and existing.session_date and existing.session_date != today:
+            await self._async_stop_stale_timed_sessions()
+            existing = None
         if existing and existing.state == "running":
             raise ValueError("Timer is already running")
 
@@ -93,6 +96,9 @@ class TimedMixin:
         session = self.storage.get_active_timed_session(chore_id, child_id)
         if not session:
             raise ValueError("No active timer to stop")
+        if session.session_date and session.session_date != dt_util.as_local(dt_util.now()).date().isoformat():
+            await self._async_stop_stale_timed_sessions()
+            return
 
         chore = self.get_chore(chore_id)
         if not chore:
