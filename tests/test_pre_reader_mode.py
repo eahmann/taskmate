@@ -165,11 +165,8 @@ class TestPreReaderPointValues:
         assert "_renderPreReaderTile(chore, child, pointsIcon, todaysCompletions = [])" in CARD
         assert 'icon="${pointsIcon}"' in tile
 
-    def test_both_render_paths_pass_the_points_icon(self):
-        """Classic and designed each call the tile — a missed argument would
-        leave the icon undefined on one style only."""
-        calls = CARD.count("this._renderPreReaderTile(chore, child, pointsIcon, todaysCompletions)")
-        assert calls == 2, f"expected both call sites to pass pointsIcon, found {calls}"
+    # Family points icons on both render paths are exercised by rendering all
+    # five designs in frontend/taskmate-routines.test.cjs.
 
     def test_points_row_is_styled(self):
         assert ".pre-tile-points {" in CARD

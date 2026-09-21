@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from homeassistant.util import dt as dt_util
@@ -68,6 +68,7 @@ class TimedMixin:
             )
             self.storage.save_timed_session(session)
 
+        self._prepare_routine_runs(chore_id, child_id)
         await self.storage.async_save()
         await self.async_refresh()
 
@@ -143,6 +144,7 @@ class TimedMixin:
         self.storage.set_last_completed(chore_id, child_id, now.isoformat())
         self.storage.remove_timed_session(session.id)
 
+        await self._async_sync_routine_awards(completion, deferred_notifications=award_notifications)
         await self.storage.async_save()
 
         if chore.requires_approval:
@@ -231,14 +233,15 @@ class TimedMixin:
         for session in stale:
             chore = self.get_chore(session.chore_id)
             child = self.get_child(session.child_id)
-            if not chore or not child:
+            if not chore or not child or not session.segments:
                 self.storage.remove_timed_session(session.id)
                 continue
 
             # Close any open segment at midnight (tz-aware so it can be
             # subtracted from the tz-aware segment start)
+            started = dt_util.as_local(datetime.fromisoformat(session.segments[0]["start"]))
+            midnight = started.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
             if session.segments and session.segments[-1].get("end") is None:
-                midnight = dt_util.start_of_local_day()
                 session.segments[-1]["end"] = midnight.isoformat()
 
             total_seconds = self._calc_session_seconds(session)
@@ -252,7 +255,7 @@ class TimedMixin:
                 completion = ChoreCompletion(
                     chore_id=session.chore_id,
                     child_id=session.child_id,
-                    completed_at=dt_util.now(),
+                    completed_at=midnight - timedelta(microseconds=1),
                     approved=not chore.requires_approval,
                     points_awarded=pts if not chore.requires_approval else 0,
                     submitted_points=pts,
@@ -264,6 +267,7 @@ class TimedMixin:
                     completion.approved_at = dt_util.now()
                     completion.points_awarded = total_awarded
                 self.storage.add_completion(completion)
+                await self._async_sync_routine_awards(completion, deferred_notifications=award_notifications)
 
             self.storage.remove_timed_session(session.id)
 

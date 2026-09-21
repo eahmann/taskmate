@@ -1132,6 +1132,55 @@ class AwardedBadge:
 
 
 @dataclass
+class Routine:
+    """A daily presentation and completion bonus for ordinary linked chores.
+
+    Defaults are a recipe for newly created chores, never a hidden override of
+    an existing chore's settings. Members remain independently configurable.
+    """
+
+    name: str
+    members: list[dict[str, Any]] = field(default_factory=list)
+    description: str = ""
+    icon: str = "mdi:format-list-checks"
+    bonus_points: int = 0
+    active: bool = True
+    defaults: dict[str, Any] = field(default_factory=dict)
+    id: str = field(default_factory=generate_id)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Routine":
+        from copy import deepcopy
+
+        return cls(
+            name=data.get("name", ""),
+            members=[
+                {"chore_id": m["chore_id"], "required": bool(m.get("required", True))} for m in data.get("members", [])
+            ],
+            description=data.get("description", ""),
+            icon=data.get("icon", "mdi:format-list-checks"),
+            bonus_points=int(data.get("bonus_points", 0)),
+            active=bool(data.get("active", True)),
+            defaults=deepcopy(data.get("defaults", {})),
+            id=data.get("id") or generate_id(),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        from copy import deepcopy
+
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "icon": self.icon,
+            "members": [dict(m) for m in self.members],
+            "bonus_points": self.bonus_points,
+            "active": self.active,
+            "defaults": deepcopy(self.defaults),
+        }
+
+
+@dataclass
 class TaskGroup:
     """Groups chores so assignments stay coordinated across them.
 

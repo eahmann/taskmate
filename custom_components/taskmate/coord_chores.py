@@ -553,6 +553,9 @@ class ChoresMixin:
         self.storage.remove_last_completed_for_chore(chore_id)
         # Strip chore from any task group it belonged to.
         self.storage.remove_chore_from_task_groups(chore_id)
+        for routine in self.storage.get_routines():
+            routine.members = [m for m in routine.members if m["chore_id"] != chore_id]
+            self.storage.save_routine(routine)
         # Drop queued scheduled changes (#675) — nothing left to apply them to.
         self.storage.remove_scheduled_changes_for_chore(chore_id)
         # Drop pending swap requests (#785), else they sit in the parent's
@@ -878,6 +881,7 @@ class ChoresMixin:
 
         # Reserve the daily quota before awarding. Notification delivery is
         # deferred until this record and the associated balances are complete.
+        self._prepare_routine_runs(chore_id, child_id)
         self.storage.add_completion(completion)
 
         award_notifications = []
@@ -921,6 +925,8 @@ class ChoresMixin:
                 await self._async_advance_quests(child_id, chore_id, deferred_notifications=award_notifications)
             if hasattr(self, "_async_evaluate_challenges"):
                 await self._async_evaluate_challenges(child_id, deferred_notifications=award_notifications)
+
+        await self._async_sync_routine_awards(completion, deferred_notifications=award_notifications)
 
         await self.storage.async_save()
 
@@ -1195,6 +1201,7 @@ class ChoresMixin:
 
                     # Finish progression before a refresh or badge notification
                     # can yield to an undo/reject of this approval.
+                    await self._async_sync_routine_awards(completion, deferred_notifications=award_notifications)
                     if not is_bonus and hasattr(self, "_async_advance_quests"):
                         await self._async_advance_quests(
                             completion.child_id, completion.chore_id, deferred_notifications=award_notifications
@@ -1373,6 +1380,8 @@ class ChoresMixin:
                 self.storage.remove_completion(bc.id)
 
         self.storage.remove_completion(completion_id)
+        if target_completion:
+            await self._async_sync_routine_awards(target_completion)
         if target_completion and target_completion.approved and not target_completion.bonus_subtask_id:
             # Same as undo: a rejected completion must not leave the quest
             # chain standing on the step it unlocked.
@@ -1442,6 +1451,7 @@ class ChoresMixin:
         target.approved_at = None
         target.points_awarded = 0
         self.storage.update_completion(target)
+        await self._async_sync_routine_awards(target)
 
         # Quest progress advanced on approval, so it has to come back too —
         # otherwise re-approving the same completion advances the chain a

@@ -436,6 +436,14 @@ class TaskMatePanel extends HTMLElement {
     if (!force && this._dialog && this._dialogInitialHash != null && this._hashDialog() !== this._dialogInitialHash) {
       if (!confirm(this._t("panel.confirm_unsaved"))) return;
     }
+    if (this._routineReturn && this._dialog?.kind === "chore") {
+      const saved = this._routineReturn;
+      this._routineReturn = null;
+      this._dialog = saved.dialog;
+      this._dialogInitialHash = saved.hash;
+      this._render();
+      return;
+    }
     this._dialog = null;
     this._dialogInitialHash = null;
     this._render();
@@ -620,6 +628,27 @@ class TaskMatePanel extends HTMLElement {
     if (act === "save-reward")   { this._doSaveReward(); return; }
     if (act === "toggle-reward-assigned") { this._toggleArrayField("assigned_to", t.dataset.id); return; }
     if (act === "toggle-reward-day") { this._toggleArrayField("available_days", Number(t.dataset.day)); return; }
+
+    // Routines link ordinary chores; their own editor keeps full chore controls.
+    if (act === "add-routine") { this._openRoutineDialog(); return; }
+    if (act === "edit-routine") { this._openRoutineDialog(t.dataset.id); return; }
+    if (act === "delete-routine") { this._confirmDelete("routine", t.dataset.id); return; }
+    if (act === "save-routine") { this._doSaveRoutine(); return; }
+    if (act === "routine-chore") { this._openRoutineChore(t.dataset.id); return; }
+    if (act === "routine-member") { this._toggleRoutineMember(t.dataset.id); return; }
+    if (act === "routine-required") {
+      const m = this._dialog?.data.members?.find(m => m.chore_id === t.dataset.id);
+      if (m) { m.required = !m.required; this._render(); }
+      return;
+    }
+    if (act === "routine-move") {
+      const items = this._dialog?.data.members;
+      const i = Number(t.dataset.idx), j = i + Number(t.dataset.dir);
+      if (items && j >= 0 && j < items.length) { [items[i], items[j]] = [items[j], items[i]]; this._render(); }
+      return;
+    }
+    if (act === "routine-assigned") { this._toggleArrayField("assigned_to", t.dataset.id); return; }
+    if (act === "routine-day") { this._toggleArrayField("due_days", t.dataset.id); return; }
 
     // Quests (chore chains)
     if (act === "add-quest")    { this._openQuestDialog(null); return; }
@@ -1110,6 +1139,11 @@ class TaskMatePanel extends HTMLElement {
   }
 
   _confirmDelete(kind, id) {
+    if (kind === "routine") {
+      const item = (this._state.routines || []).find(r => r.id === id);
+      if (item && confirm(this._t("panel.routine_delete_confirm", { name: item.name }))) this._doRemove(kind, id);
+      return;
+    }
     const labels = { child: this._t("panel.entity_child"), chore: this._t("panel.entity_chore"), reward: this._t("panel.entity_reward"), penalty: this._t("panel.entity_penalty"), bonus: this._t("panel.entity_bonus"), group: this._t("panel.entity_group"), quest: this._t("panel.entity_quest"), challenge: this._t("panel.entity_challenge") };
     const collectionKey = { child: "children", chore: "chores", reward: "rewards", penalty: "penalties", bonus: "bonuses", group: "task_groups", quest: "quests", challenge: "challenges" }[kind];
     const item = (this._state[collectionKey] || []).find(x => x.id === id);
@@ -1134,12 +1168,13 @@ class TaskMatePanel extends HTMLElement {
       bonus:   "taskmate/remove_bonus",
       group:   "taskmate/remove_task_group",
       quest:   "taskmate/delete_quest",
+      routine: "taskmate/delete_routine",
       challenge: "taskmate/delete_challenge",
     }[kind];
     const idField = {
       child: "child_id", chore: "chore_id", reward: "reward_id",
       penalty: "penalty_id", bonus: "bonus_id", group: "group_id",
-      quest: "quest_id", challenge: "challenge_id",
+      quest: "quest_id", challenge: "challenge_id", routine: "routine_id",
     }[kind];
     const { ok, err } = await this._callWS({ type: wsType, [idField]: id });
     if (!ok) { this._showToast("err", this._t("panel.toast_delete_failed", {error: err})); return; }
@@ -1701,8 +1736,11 @@ class TaskMatePanel extends HTMLElement {
     const payload = wasAdd
       ? { type: "taskmate/add_chore", ...base }
       : { type: "taskmate/update_chore", chore_id: d.id, ...base };
-    const { ok, err } = await this._callWS(payload);
+    const { ok, err, res } = await this._callWS(payload);
     if (!ok) { this._showToast("err", this._t("panel.toast_save_failed", {error: err})); return; }
+    if (wasAdd && this._routineReturn && res?.id) {
+      this._routineReturn.dialog.data.members.push({ chore_id: res.id, required: true });
+    }
     this._closeDialog(true);
     await this._fetchState();
     this._showToast("ok", wasAdd ? this._t("panel.toast_chore_added") : this._t("panel.toast_chore_updated"));
@@ -1780,6 +1818,58 @@ class TaskMatePanel extends HTMLElement {
     this._closeDialog(true);
     await this._fetchState();
     this._showToast("ok", wasAdd ? this._t("panel.toast_reward_added") : this._t("panel.toast_reward_updated"));
+  }
+
+  // ---- Routines -------------------------------------------------------
+  _openRoutineDialog(id) {
+    const routine = id ? (this._state.routines || []).find(r => r.id === id) : null;
+    if (id && !routine) return;
+    this._openDialog({ kind: "routine", mode: id ? "edit" : "add", data: {
+      name: "", description: "", icon: "mdi:format-list-checks", bonus_points: 0, active: true,
+      ...routine, members: (routine?.members || []).map(m => ({ ...m })),
+      assigned_to: [...(routine?.defaults?.assigned_to || [])],
+      due_days: [...(routine?.defaults?.due_days || [])],
+      time_category: routine?.defaults?.time_category || "anytime",
+      requires_approval: routine?.defaults?.requires_approval ?? true,
+    } });
+  }
+
+  _toggleRoutineMember(id) {
+    const items = this._dialog.data.members;
+    const index = items.findIndex(m => m.chore_id === id);
+    if (index < 0) items.push({ chore_id: id, required: true });
+    else items.splice(index, 1);
+    this._render();
+  }
+
+  _openRoutineChore(id) {
+    this._syncIconPickers();
+    const draft = this._dialog;
+    this._routineReturn = { dialog: draft, hash: this._dialogInitialHash };
+    this._openChoreDialog(id || null);
+    if (!id) {
+      const d = draft.data;
+      Object.assign(this._dialog.data, { assigned_to: [...d.assigned_to], due_days: [...d.due_days],
+        time_category: d.time_category, requires_approval: d.requires_approval });
+      this._dialogInitialHash = this._hashDialog();
+      this._render();
+    }
+  }
+
+  async _doSaveRoutine() {
+    this._syncIconPickers();
+    const d = this._dialog.data;
+    if (!d.name?.trim()) { this._showToast("err", this._t("panel.toast_name_required")); return; }
+    const { ok, err } = await this._callWS({ type: "taskmate/save_routine",
+      ...(d.id ? { routine_id: d.id } : {}), name: d.name.trim(), description: d.description,
+      icon: d.icon || "mdi:format-list-checks", members: d.members, bonus_points: Number(d.bonus_points) || 0,
+      active: d.active !== false, defaults: { assigned_to: d.assigned_to, due_days: d.due_days,
+        time_category: d.time_category, requires_approval: !!d.requires_approval },
+    });
+    if (!ok) { this._showToast("err", this._t("panel.toast_save_failed", {error: err})); return; }
+    this._closeDialog(true);
+    await this._fetchState();
+    this._showToast("ok", this._t("panel.routine_saved"));
   }
 
   // ---- Quests (chore chains) -------------------------------------------
@@ -2646,6 +2736,7 @@ class TaskMatePanel extends HTMLElement {
       penalties: (this._state.penalties || []).length,
       bonuses:   (this._state.bonuses || []).length,
       groups:    (this._state.task_groups || []).length,
+      routines:  (this._state.routines || []).length,
       templates: (this._state.templates || []).length,
     } : {};
     return [
@@ -2660,6 +2751,7 @@ class TaskMatePanel extends HTMLElement {
         { id: "penalties", label: this._t("panel.tab_penalties"), icon: "mdi:alert-circle-outline" },
         { id: "bonuses",   label: this._t("panel.tab_bonuses"),   icon: "mdi:flash-outline" },
         { id: "groups",    label: this._t("panel.tab_groups"),    icon: "mdi:layers-outline" },
+        { id: "routines",  label: this._t("panel.tab_routines"),  icon: "mdi:format-list-checks" },
         { id: "quests",    label: this._t("panel.tab_quests"),    icon: "mdi:map-marker-path" },
         { id: "challenges", label: this._t("panel.tab_challenges"), icon: "mdi:trophy-outline" },
         { id: "badges",    label: this._t("panel.tab_badges"),     icon: "mdi:medal-outline" },
@@ -2829,6 +2921,7 @@ class TaskMatePanel extends HTMLElement {
       case "bonuses":   return this._renderPenBonTab("bonus");
       case "groups":    return this._renderGroupsTab();
       case "quests":    return this._renderQuestsTab();
+      case "routines":  return this._renderRoutinesTab();
       case "challenges": return this._renderChallengesTab();
       case "badges":    return this._renderBadgesTab();
       case "templates":     return this._renderTemplatesTab();
@@ -3598,6 +3691,68 @@ class TaskMatePanel extends HTMLElement {
   }
 
   // -- Quests tab --------------------------------------------------------
+  _renderRoutinesTab() {
+    const routines = this._state.routines || [];
+    const chores = new Map((this._state.chores || []).map(c => [c.id, c]));
+    return `<div class="tm-toolbar">
+      <h2 class="tm-toolbar-title">${this._t("panel.tab_routines")} <span class="tm-toolbar-count">${routines.length}</span></h2>
+      <button type="button" class="tm-btn tm-btn-raised" data-act="add-routine">${this._t("panel.routine_add")}</button>
+    </div><p class="tm-field-hint">${this._t("panel.routine_hint")}</p>
+    <div class="tm-grid">${routines.map(r => `<article class="tm-card" style="padding:20px">
+      <h3>${this._mdi(r.icon)} ${this._esc(r.name)}</h3><p>${this._esc(r.description)}</p>
+      <ol>${r.members.map(m => `<li>${this._esc(chores.get(m.chore_id)?.name || this._t("panel.quest_missing_chore"))}
+        ${m.required ? "" : ` · ${this._t("panel.routine_optional")}`}</li>`).join("")}</ol>
+      <p>${this._t("panel.routine_bonus", { points: r.bonus_points })}${r.active ? "" : ` · ${this._t("panel.routine_paused")}`}</p>
+      <button type="button" class="tm-btn" data-act="edit-routine" data-id="${this._esc(r.id)}">${this._t("panel.btn_edit")}</button>
+      <button type="button" class="tm-btn tm-btn-danger" data-act="delete-routine" data-id="${this._esc(r.id)}">${this._t("panel.btn_delete")}</button>
+    </article>`).join("")}</div>`;
+  }
+
+  _renderRoutineDialog() {
+    const d = this._dialog.data;
+    const chores = this._state.chores || [];
+    const occupied = new Set((this._state.routines || []).filter(r => r.id !== d.id).flatMap(r => r.members.map(m => m.chore_id)));
+    const available = chores.filter(c => !occupied.has(c.id) && !d.members.some(m => m.chore_id === c.id));
+    const memberRows = d.members.map((m, i) => {
+      const chore = chores.find(c => c.id === m.chore_id);
+      return `<div class="tm-routine-member">
+        <div><strong>${i + 1}. ${this._esc(chore?.name || this._t("panel.quest_missing_chore"))}</strong>
+          <span class="tm-meta">${chore?.points ?? 0} ${this._esc(this._state.settings.points_name || "Stars")}</span></div>
+        <div class="tm-routine-controls">
+          <button type="button" class="tm-chip-btn ${m.required ? "tm-chip-on" : ""}" data-act="routine-required" data-id="${this._esc(m.chore_id)}" aria-pressed="${!!m.required}">${this._t(m.required ? "panel.routine_required" : "panel.routine_optional")}</button>
+          <button type="button" class="tm-btn tm-btn-sm" data-act="routine-chore" data-id="${this._esc(m.chore_id)}">${this._t("panel.btn_edit")}</button>
+          <button type="button" class="tm-btn tm-btn-sm" data-act="routine-move" data-idx="${i}" data-dir="-1" aria-label="${this._t("panel.routine_move_up")}" ${i === 0 ? "disabled" : ""}>▲</button>
+          <button type="button" class="tm-btn tm-btn-sm" data-act="routine-move" data-idx="${i}" data-dir="1" aria-label="${this._t("panel.routine_move_down")}" ${i === d.members.length - 1 ? "disabled" : ""}>▼</button>
+          <button type="button" class="tm-btn tm-btn-sm" data-act="routine-member" data-id="${this._esc(m.chore_id)}" aria-label="${this._t("panel.routine_unlink")}">✕</button>
+        </div>
+      </div>`;
+    }).join("");
+    return this._dialogShell(this._t("panel.routine_editor"), [
+      `<style>.tm-routine-member{padding:12px 0;border-bottom:1px solid var(--divider-color)}.tm-routine-controls{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}</style>`,
+      this._field(this._t("panel.chore_name_label"), "name", d.name, "text"),
+      this._field(this._t("panel.chore_description_label"), "description", d.description, "text"),
+      this._iconPickerField(this._t("panel.reward_icon_label"), "icon", d.icon),
+      this._field(this._t("panel.quest_bonus_label", { points_name: this._state.settings.points_name || "Stars" }), "bonus_points", d.bonus_points, "number"),
+      `<p class="tm-field-hint">${this._t("panel.routine_bonus_hint")}</p>`,
+      `<details open><summary>${this._t("panel.routine_defaults")}</summary>
+        <p class="tm-field-hint">${this._t("panel.routine_defaults_hint")}</p>
+        <label class="tm-field-label">${this._t("panel.quest_assigned_label")}</label>
+        <div class="tm-chip-row">${(this._state.children || []).map(c => `<button type="button" class="tm-chip-btn ${d.assigned_to.includes(c.id) ? "tm-chip-on" : ""}" data-act="routine-assigned" data-id="${this._esc(c.id)}">${this._esc(c.name)}</button>`).join("")}</div>
+        <p class="tm-field-hint">${this._t("panel.chore_assign_hint")}</p>
+        <div class="tm-chip-row">${DAYS.map(day => `<button type="button" class="tm-chip-btn ${d.due_days.includes(day.v) ? "tm-chip-on" : ""}" data-act="routine-day" data-id="${day.v}">${this._t(day.lk)}</button>`).join("")}</div>
+        <p class="tm-field-hint">${this._t("panel.routine_every_day")}</p>
+        ${this._select(this._t("panel.chore_time_category_label"), "time_category", d.time_category, this._timeCategoryOptions())}
+        ${this._switch(this._t("panel.template_requires_approval_label"), "requires_approval", d.requires_approval)}
+      </details>`,
+      `<h3>${this._t("panel.tab_chores")}</h3>${memberRows}
+       <button type="button" class="tm-btn" data-act="routine-chore" style="margin-top:12px">${this._t("panel.routine_new_chore")}</button>
+       <p class="tm-field-hint">${this._t("panel.routine_chore_save_hint")}</p>
+       ${available.length ? `<details><summary>${this._t("panel.routine_link_existing")}</summary><div class="tm-chip-row">${available.map(c => `<button type="button" class="tm-chip-btn" data-act="routine-member" data-id="${this._esc(c.id)}">＋ ${this._esc(c.name)}</button>`).join("")}</div></details>` : ""}`,
+      this._switch(this._t("panel.quest_active_label"), "active", d.active !== false, this._t("panel.routine_active_hint")),
+    ].join(""), `<button type="button" class="tm-btn" data-act="close-dialog">${this._t("panel.btn_cancel")}</button>
+      <button type="button" class="tm-btn tm-btn-raised" data-act="save-routine">${this._t("panel.btn_save")}</button>`);
+  }
+
   _renderQuestsTab() {
     const all = this._state.quests || [];
     const quests = this._filterByName(all);
@@ -5307,6 +5462,7 @@ class TaskMatePanel extends HTMLElement {
     if (this._dialog.kind === "bonus")        return this._renderPenBonDialog("bonus");
     if (this._dialog.kind === "group")        return this._renderGroupDialog();
     if (this._dialog.kind === "quest")        return this._renderQuestDialog();
+    if (this._dialog.kind === "routine")      return this._renderRoutineDialog();
     if (this._dialog.kind === "avatar-catalog") return this._renderAvatarCatalogDialog();
     if (this._dialog.kind === "challenge")    return this._renderChallengeDialog();
     if (this._dialog.kind === "apply-penalty") return this._renderApplyDialog("penalty");

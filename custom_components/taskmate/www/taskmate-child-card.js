@@ -2153,19 +2153,8 @@ class TaskMateChildCard extends LitElement {
                   })() : ''}
                 </div>
                 ${this._renderRoulette(child, childChores, pointsIcon)}
-                ${this.config.pre_reader === true ? html`
-                  <div class="pre-reader-grid">
-                    ${childChores.map((chore) =>
-                      this._renderPreReaderTile(chore, child, pointsIcon, todaysCompletions))}
-                  </div>
-                ` : childChores.map((chore, index) => html`
-                  ${chore.task_type === 'timed'
-                    ? this._renderTimedChoreCard(chore, child, pointsIcon, todaysCompletions, index)
-                    : html`
-                      ${this._renderChoreCard(chore, child, pointsIcon, todaysCompletions, index)}
-                      ${this._renderBonusSubtasks(chore, child, pointsIcon, todaysCompletions)}
-                    `}
-                `)}
+                ${this._renderRoutineGroups(child, childChores, c => c.id, chores =>
+                  this._renderClassicChores(chores, child, pointsIcon, todaysCompletions), pointsIcon)}
               `}
         </div>
 
@@ -2448,15 +2437,12 @@ class TaskMateChildCard extends LitElement {
     // silently ignored under every designed style — including accessible,
     // which is the one a child who needs picture tiles is most likely on.
     // The tiles keep the designed shell (header, tokens) around them.
-    const body = this.config.pre_reader === true
-      ? html`
-        <div class="pre-reader-grid">
-          ${childChores.map((chore) =>
-            this._renderPreReaderTile(chore, child, pointsIcon, todaysCompletions))}
-        </div>`
-      : design === "playroom" ? this._designPlayroom(child, rows, remaining, tone) :
-        design === "console"  ? this._designConsole(child, rows, remaining, tone) :
-                                this._designCleanpro(child, rows, remaining, tone);
+    const body = this._renderRoutineGroups(child, rows, r => r.chore.id, groupRows =>
+      this.config.pre_reader === true
+        ? this._renderClassicChores(groupRows.map(r => r.chore), child, pointsIcon, todaysCompletions)
+        : design === "playroom" ? this._designPlayroom(child, groupRows, remaining, tone)
+        : design === "console" ? this._designConsole(child, groupRows, remaining, tone)
+        : this._designCleanpro(child, groupRows, remaining, tone), pointsIcon);
 
     return html`<ha-card class="tmd" style="--hd:${hd}">
       ${this._designHeaderFull(child, design, remaining, rows.length, tone, pendingPoints)}
@@ -2508,6 +2494,49 @@ class TaskMateChildCard extends LitElement {
       <input type="file" id="tm-photo-input" accept="image/*" capture="environment"
              style="display:none" @change="${this._onPhotoSelected}">
     </ha-card>`;
+  }
+
+  _renderClassicChores(chores, child, pointsIcon, completions) {
+    if (this.config.pre_reader === true) return html`<div class="pre-reader-grid">
+      ${chores.map(c => this._renderPreReaderTile(c, child, pointsIcon, completions))}</div>`;
+    return chores.map((c, i) => c.task_type === "timed"
+      ? this._renderTimedChoreCard(c, child, pointsIcon, completions, i)
+      : html`${this._renderChoreCard(c, child, pointsIcon, completions, i)}${this._renderBonusSubtasks(c, child, pointsIcon, completions)}`);
+  }
+
+  /** A single grouping path for classic, designed and picture cards. The
+   *  original chore rows still own completion, approval, photos and animation. */
+  _renderRoutineGroups(child, items, getId, renderItems, pointsIcon = "mdi:star") {
+    if (!child.routines?.length) return renderItems(items);
+    const byId = new Map(items.map(item => [getId(item), item]));
+    const grouped = new Set();
+    const sections = child.routines.map(routine => {
+      const members = routine.members.filter(m => byId.has(m.chore_id) && !grouped.has(m.chore_id));
+      if (!members.length) return "";
+      members.forEach(m => grouped.add(m.chore_id));
+      const optional = members.filter(m => !m.required).map(m => {
+        const item = byId.get(m.chore_id);
+        return (item.chore || item).name;
+      });
+      return html`<section class="tm-routine" data-routine-id="${routine.id}" aria-label="${routine.name}"
+        style="border:1px solid var(--divider-color,#8885);border-radius:16px;padding:12px;margin-bottom:16px">
+        <header style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+          <ha-icon icon="${routine.done ? 'mdi:check-circle' : routine.icon || 'mdi:format-list-checks'}"></ha-icon>
+          <div style="flex:1;min-width:0"><strong>${routine.name}</strong>
+            <div style="font-size:.85em;opacity:.8">${this._t('routine.progress', { done: routine.completed_count, total: routine.required_count })}</div>
+          </div>
+          ${routine.bonus_points > 0 ? html`<span style="white-space:nowrap">${routine.done ? '✓' : '+'}${routine.bonus_points}
+            <ha-icon icon="${pointsIcon}" style="--mdc-icon-size:18px"></ha-icon></span>` : ''}
+        </header>
+        ${routine.description ? html`<p>${routine.description}</p>` : ''}
+        ${routine.pending_count ? html`<p role="status">${this._t('routine.pending', { count: routine.pending_count })}</p>` : ''}
+        ${routine.done ? html`<p role="status">${this._t('routine.complete_status')}</p>` : ''}
+        ${optional.length ? html`<p style="font-size:.85em">${this._t('routine.optional', { names: optional.join(', ') })}</p>` : ''}
+        ${renderItems(members.map(m => byId.get(m.chore_id)))}
+      </section>`;
+    });
+    const rest = items.filter(item => !grouped.has(getId(item)));
+    return html`${sections}${rest.length ? renderItems(rest) : ''}`;
   }
 
   /** Designed header: avatar/title, remaining pill, pending-points chip. */

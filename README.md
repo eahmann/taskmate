@@ -4,6 +4,8 @@
 
 <h1 align="center">TaskMate</h1>
 
+This fork adds [daily Routines built from ordinary chores](ROUTINES.md).
+
 <p align="center">
   <strong>Turn chores into a game your kids actually want to play.</strong><br>
   A Home Assistant integration for family chore management, rewards, and streak tracking.

@@ -164,4 +164,3 @@ function completion(step, approved = true, extras = {}) {
   return { completion_id: `done_${step}`, chore_id: 'ready', child_id: 'kid', bonus_subtask_id: step,
     approved, completed_at: new Date().toISOString(), ...extras };
 }
-

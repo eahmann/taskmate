@@ -953,12 +953,29 @@ class PointsMixin:
         all_completions = self.storage.get_completions()
         before = len(all_completions)
 
+        # Retain the whole routine day while any of its submissions can still
+        # be reviewed. Pruning an approved sibling of a pending item would
+        # otherwise make its eventual bonus impossible to earn.
+        runs = self.storage.get_routine_runs()
+        pending_days = {
+            (c.child_id, dt_util.as_local(c.completed_at).date().isoformat()) for c in all_completions if not c.approved
+        }
+        cutoff_day = dt_util.as_local(cutoff).date().isoformat()
+        keep_runs = [r for r in runs if r["day"] >= cutoff_day or (r["child_id"], r["day"]) in pending_days]
+        routine_days = {(r["child_id"], r["day"]) for r in keep_runs}
         # Keep completions newer than cutoff OR unapproved (pending)
-        to_keep = [c for c in all_completions if c.completed_at >= cutoff or not c.approved]
+        to_keep = [
+            c
+            for c in all_completions
+            if c.completed_at >= cutoff
+            or not c.approved
+            or (c.child_id, dt_util.as_local(c.completed_at).date().isoformat()) in routine_days
+        ]
 
-        if len(to_keep) < before:
+        if len(to_keep) < before or len(keep_runs) < len(runs):
             kept_ids = {c.id for c in to_keep}
             self.storage.replace_completions(to_keep)
+            self.storage._data["routine_runs"] = keep_runs
             await self.storage.async_save()
             # Delete evidence photos belonging to the pruned completions so the
             # photos dir doesn't grow forever (best-effort; foreign/blank URLs
