@@ -1843,5 +1843,9 @@
   "routine.progress": "{done} / {total} required chores approved",
   "routine.pending": "{count} waiting for parent approval",
   "routine.optional": "Optional: {names}",
-  "routine.complete_status": "Routine complete!"
+  "routine.complete_status": "Routine complete!",
+  "panel.settings_chore_undo_label": "Chore undo window (seconds)",
+  "panel.settings_chore_undo_hint": "Applies to all children and dashboards. Automatically approved chores can be undone for 0–3600 seconds after completion; 0 disables this window. Pending submissions can be withdrawn until a parent approves them.",
+  "child.undo_recent": "Undo recent chores",
+  "child.undo_named": "Undo {name}"
 }

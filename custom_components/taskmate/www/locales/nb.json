@@ -1843,5 +1843,9 @@
   "routine.progress": "{done} / {total} påkrevde oppgaver godkjent",
   "routine.pending": "{count} venter på godkjenning fra forelder",
   "routine.optional": "Valgfrie: {names}",
-  "routine.complete_status": "Rutinen er fullført!"
+  "routine.complete_status": "Rutinen er fullført!",
+  "panel.settings_chore_undo_label": "Angrefrist for oppgaver (sekunder)",
+  "panel.settings_chore_undo_hint": "Gjelder alle barn og dashbord. Automatisk godkjente oppgaver kan angres i 0–3600 sekunder etter fullføring; 0 deaktiverer fristen. Innsendinger som venter på godkjenning, kan trekkes tilbake til en forelder godkjenner dem.",
+  "child.undo_recent": "Angre nylige oppgaver",
+  "child.undo_named": "Angre {name}"
 }

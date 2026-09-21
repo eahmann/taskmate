@@ -4743,6 +4743,10 @@ class TaskMatePanel extends HTMLElement {
               <div class="tm-setting-label">${this._t("panel.settings_quick_points_label")}<small>${this._t("panel.settings_quick_points_hint")}</small></div>
               <input type="text" class="tm-input" data-setting="quick_point_amounts" value="${this._esc(s.quick_point_amounts == null ? "" : s.quick_point_amounts)}" placeholder="5, 10, 20">
             </div>
+            <div class="tm-setting-row">
+              <div class="tm-setting-label">${this._t("panel.settings_chore_undo_label")}<small>${this._t("panel.settings_chore_undo_hint")}</small></div>
+              <input type="number" class="tm-input" min="0" max="3600" step="1" aria-label="${this._esc(this._t('panel.settings_chore_undo_label'))}" data-setting="chore_undo_seconds" value="${this._num(s.chore_undo_seconds, 10)}">
+            </div>
           </div>
         </div>
 

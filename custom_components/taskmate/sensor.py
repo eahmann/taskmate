@@ -17,6 +17,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from . import images
+from .chore_undo import child_undo_metadata
 from .const import DOMAIN
 from .coord_rewards import reward_is_time_locked
 from .coordinator import TaskMateCoordinator
@@ -122,6 +123,7 @@ def _compute_common(coordinator: TaskMateCoordinator) -> dict:
         "reward_lookup": reward_lookup,
         "season_points": season_points,
         "all_completions": all_completions,
+        "chore_undo_seconds": coordinator.storage.get_chore_undo_seconds(),
         "pending_completions": pending_completions,
         "pending_reward_claim_objs": pending_reward_claim_objs,
         "pool_alloc_objs": pool_alloc_objs,
@@ -407,6 +409,7 @@ def _build_todays_completions(common: dict) -> list[dict]:
             if hasattr(comp.completed_at, "isoformat")
             else str(comp.completed_at),
             "bonus_subtask_id": bonus_subtask_id,
+            **child_undo_metadata(comp, common["all_completions"], common.get("chore_undo_seconds", 10)),
         }
         if timed_secs > 0:
             rec["timed_duration_seconds"] = timed_secs
@@ -883,6 +886,7 @@ class TaskMateOverallStatsSensor(_CachedAttrsSensor):
             "points_icon": data.get("points_icon", "mdi:star"),
             # Global default card-design style; cards read this when no per-card override (#design).
             "card_design": settings.get("card_design", "classic"),
+            "chore_undo_seconds": self.coordinator.storage.get_chore_undo_seconds(),
             # Non-admin parent role (#661): cards unlock parent controls for
             # these HA users. Deliberately still published in the clear, and
             # deliberately never trusted: every privileged path re-resolves the
@@ -1361,6 +1365,8 @@ class PendingApprovalsSensor(TaskMateBaseSensor):
         pending_rewards = self.coordinator.data.get("pending_reward_claims", [])
 
         completion_details = []
+        undo_completions = self.coordinator.storage.get_completions()
+        undo_seconds = self.coordinator.storage.get_chore_undo_seconds()
         for comp in pending_completions:
             child = self.coordinator.get_child(comp.child_id)
             chore = self.coordinator.get_chore(comp.chore_id)
@@ -1392,6 +1398,7 @@ class PendingApprovalsSensor(TaskMateBaseSensor):
                     "time_category": chore.time_category,
                     "completed_at": comp.completed_at.isoformat(),
                     "bonus_subtask_id": bonus_subtask_id,
+                    **child_undo_metadata(comp, undo_completions, undo_seconds),
                 }
                 if timed_secs > 0:
                     detail["timed_duration_seconds"] = timed_secs

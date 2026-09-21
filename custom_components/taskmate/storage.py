@@ -920,6 +920,16 @@ class TaskMateStorage:
             return []
         return [x for x in raw if isinstance(x, str) and x]
 
+    def get_chore_undo_seconds(self) -> int:
+        """Global grace period for undoing automatically approved chores."""
+        value = self.get_setting("chore_undo_seconds", 10)
+        try:
+            if isinstance(value, bool):
+                return 10
+            return max(0, min(3600, int(value)))
+        except (TypeError, ValueError, OverflowError):
+            return 10
+
     def get_require_linked_child(self) -> bool:
         """True when acting *as* a child requires that child to be linked.
 

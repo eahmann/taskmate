@@ -397,6 +397,7 @@ def _build_state_snapshot(coordinator: TaskMateCoordinator) -> dict[str, Any]:
             "points_name": data.get("points_name", "Stars"),
             "points_icon": data.get("points_icon", "mdi:star"),
             "card_design": "classic",
+            "chore_undo_seconds": 10,
             # Difficulty multiplier defaults; overridden by stored values below.
             "difficulty_multiplier_easy": 0.5,
             "difficulty_multiplier_medium": 1.0,
@@ -1708,6 +1709,7 @@ _TOP_LEVEL_SETTINGS = {"points_name", "points_icon"}
 _ALLOWED_CARD_DESIGNS = {"classic", "playroom", "console", "cleanpro", "accessible"}
 # Settings stored under storage._data["settings"][key]
 _SUBKEY_SETTINGS = {
+    "chore_undo_seconds",
     "require_linked_child",
     "history_days",
     "streak_reset_mode",
@@ -1899,6 +1901,12 @@ def _validate_vacation_periods(raw: list) -> tuple[list[dict] | None, str | None
 # Extracted to a module constant so the accepted settings keys can be unit-tested
 # (the websocket_command decorator does not expose the compiled schema). Every key
 # accepted here must also be routed in _ws_update_settings below.
+def _validate_chore_undo_seconds(value):
+    if type(value) is not int or not 0 <= value <= 3600:
+        raise vol.Invalid("Chore undo window must be a whole number from 0 to 3600 seconds")
+    return value
+
+
 _UPDATE_SETTINGS_SCHEMA = {
     vol.Required("type"): WS_UPDATE_SETTINGS,
     vol.Optional("points_name"): vol.All(str, vol.Length(min=1, max=120)),
@@ -1917,6 +1925,7 @@ _UPDATE_SETTINGS_SCHEMA = {
     vol.Optional("difficulty_multiplier_hard"): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=10.0)),
     vol.Optional("unlock_allowlist"): [str],
     vol.Optional("require_linked_child"): bool,
+    vol.Optional("chore_undo_seconds"): _validate_chore_undo_seconds,
     vol.Optional("parent_routing"): vol.In(["all", "home", "round_robin"]),
     vol.Optional("read_aloud_media_player"): str,
     vol.Optional("read_aloud_tts_entity"): str,
