@@ -44,6 +44,42 @@ complete_chore:
           max: 999
           mode: box
 
+set_checklist_item:
+  name: Set checklist item
+  description: Check or uncheck a required checklist step. The final checked item submits the whole chore using its normal approval rules. Unchecking a submitted chore follows the global child undo policy.
+  fields:
+    chore_id:
+      name: Chore ID
+      required: true
+      selector:
+        text:
+    child_id:
+      name: Child ID
+      required: true
+      selector:
+        text:
+    item_id:
+      name: Checklist item ID
+      required: true
+      selector:
+        text:
+    checked:
+      name: Checked
+      required: true
+      selector:
+        boolean:
+    occurrence_id:
+      name: Checklist occurrence ID
+      description: The occurrence_id from the child's checklist_progress sensor attribute. Prevents a stale action from changing a newer checklist.
+      required: true
+      selector:
+        text:
+    photo_url:
+      name: Photo URL
+      description: TaskMate evidence photo to attach when checking the final item of a photo-required chore.
+      selector:
+        text:
+
 complete_bonus_subtask:
   name: Complete Bonus Sub-task
   description: Complete a bonus sub-task after the parent chore is done

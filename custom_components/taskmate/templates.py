@@ -27,6 +27,7 @@ TEMPLATE_CHORE_FIELDS = (
     "weather_temp_max",
     "weather_wind_max",
     "task_type",
+    "checklist_items",
     "timed_rate_points",
     "timed_rate_minutes",
     "timed_max_daily_minutes",

@@ -150,7 +150,11 @@
   function scheduleUndoExpiry(card, attrs, childId) {
     clearTimeout(card._undoExpiryTimer);
     card._undoExpiryTimer = null;
-    const deadlines = undoCandidates(attrs, childId)
+    const checklist = Object.values((attrs.children || []).find(c => c.id === childId)?.checklist_progress || {});
+    const acknowledged = [...(card._checklistSnapshots || new Map())]
+      .filter(([key]) => key.startsWith(`${childId}:`)).map(([, entry]) => entry.progress);
+    const deadlines = [...undoCandidates(attrs, childId), ...checklist, ...acknowledged]
+      .filter(c => canUndoChore(c))
       .map(c => Date.parse(c.child_undo_until)).filter(t => Number.isFinite(t));
     if (deadlines.length) {
       card._undoExpiryTimer = setTimeout(() => card.requestUpdate(),
@@ -186,6 +190,53 @@
     canUndo: canUndoChore, candidates: undoCandidates,
     scheduleExpiry: scheduleUndoExpiry, render: renderChoreUndo,
   };
+
+  // Checklist state belongs to an individual child and occurrence. Never put
+  // checked flags on the shared chore definition (siblings use that same object).
+  function checklistProgress(card, child, chore) {
+    const source = child?.checklist_progress?.[chore.id];
+    const key = `${child?.id}:${chore.id}`;
+    const cached = card._checklistSnapshots?.get(key);
+    if (cached && source === cached.source) return cached.progress;
+    if (cached) card._checklistSnapshots.delete(key);
+    return source || { items: (chore.checklist_items || []).map(item => ({ ...item, checked: false })), occurrence_id: '', completion_id: '' };
+  }
+
+  function rememberChecklist(card, child, chore, source, progress) {
+    if (!progress) return;
+    card._checklistSnapshots ||= new Map();
+    card._checklistSnapshots.set(`${child.id}:${chore.id}`, { source, progress });
+  }
+
+  function renderChecklistItems(html, card, progress, disabled, onToggle) {
+    const items = progress.items || [];
+    return html`
+      <style>
+        .tm-checklist-items { width:100%; display:flex; flex-direction:column; gap:8px; text-align:left; }
+        .tm-checklist-progress { font-size:.88em; color:var(--tmd-dim,var(--secondary-text-color)); }
+        .tm-checklist-item { display:flex; align-items:center; gap:12px; width:100%; min-height:48px;
+          text-align:left; padding:10px 12px; font:inherit; font-weight:600; cursor:pointer;
+          border:1px solid var(--tmd-border,var(--divider-color,#8886)); border-radius:var(--tmd-radius-sm,12px);
+          color:var(--tmd-text,var(--primary-text-color)); background:var(--tmd-surface,var(--card-background-color,#fff)); }
+        .tm-checklist-item[aria-checked="true"] { background:color-mix(in srgb,var(--tmd-good,#16a34a) 12%,var(--card-background-color,#fff)); }
+        .tm-checklist-item ha-icon { flex:0 0 24px; --mdc-icon-size:24px; }
+        .tm-checklist-item span { overflow-wrap:anywhere; }
+        .tm-checklist-item:disabled { cursor:default; opacity:.65; }
+        .tm-checklist-item:focus-visible { outline:3px solid var(--primary-color,#03a9f4); outline-offset:2px; }
+      </style>
+      <div class="tm-checklist-items" role="group" aria-label=${card._t('child.checklist_hint')}>
+        <div class="tm-checklist-progress" aria-live="polite">${card._t('child.checklist_progress', { done: items.filter(i => i.checked).length, total: items.length })}</div>
+        ${items.map(item => html`<button class="tm-checklist-item" type="button" role="checkbox"
+          data-step-id="${item.id}" aria-checked="${!!item.checked}"
+          ?disabled=${disabled || !progress.occurrence_id || (!!progress.completion_id && !canUndoChore(progress))}
+          @click=${event => { event.stopPropagation(); return onToggle(item, !item.checked); }}>
+          <ha-icon icon="${item.checked ? 'mdi:checkbox-marked' : 'mdi:checkbox-blank-outline'}"></ha-icon>
+          <span>${item.name}</span>
+        </button>`)}
+      </div>`;
+  }
+
+  window.__taskmate_checklist = { progress: checklistProgress, remember: rememberChecklist, render: renderChecklistItems };
 
   /**
    * Stable id of a badge entry from the badges sensor.

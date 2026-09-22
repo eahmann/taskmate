@@ -76,6 +76,7 @@ class TaskMateChildCard extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     clearTimeout(this._undoExpiryTimer);
+    clearTimeout(this._checklistCelebrationTimer);
     this._stopTimerTick();
     if (this._justEarnedTimeout) {
       clearTimeout(this._justEarnedTimeout);
@@ -2505,7 +2506,9 @@ class TaskMateChildCard extends LitElement {
   _renderClassicChores(chores, child, pointsIcon, completions) {
     if (this.config.pre_reader === true) return html`<div class="pre-reader-grid">
       ${chores.map(c => this._renderPreReaderTile(c, child, pointsIcon, completions))}</div>`;
-    return chores.map((c, i) => c.task_type === "timed"
+    return chores.map((c, i) => c.task_type === "checklist"
+      ? this._renderChecklistChore(c, child, pointsIcon)
+      : c.task_type === "timed"
       ? this._renderTimedChoreCard(c, child, pointsIcon, completions, i)
       : html`${this._renderChoreCard(c, child, pointsIcon, completions, i)}${this._renderBonusSubtasks(c, child, pointsIcon, completions)}`);
   }
@@ -2644,10 +2647,14 @@ class TaskMateChildCard extends LitElement {
     return this._renderBonusSubtasks(r.chore, r.child, r.pointsIcon, r.todaysCompletions);
   }
 
+  _designChecklist(r) {
+    return this._renderChecklistChore(r.chore, r.child, r.pointsIcon);
+  }
+
   _designPlayroom(child, rows, _remaining, _tone) {
     if (rows.length === 0) return html`<div class="tmd-empty">${this._t("child.all_done")}</div>`;
     return html`<div class="tmd-chores">
-      ${rows.map(r => r.timed ? this._designTimed(r) : html`
+      ${rows.map(r => r.chore.task_type === 'checklist' ? this._designChecklist(r) : r.timed ? this._designTimed(r) : html`
         <div class="tmd-chore ${r.done ? "done" : ""} ${r.mandatory ? "mandatory" : ""} ${r.dimmed ? "dimmed" : ""}" style="--ac:${r.tone}">
           <div class="num-badge" style="${r.done ? "--ac:var(--tmd-good)" : ""}">${r.done ? "✓" : r.index + 1}</div>
           <span class="ch-emoji">${r.glyph}</span>
@@ -2667,7 +2674,7 @@ class TaskMateChildCard extends LitElement {
   _designConsole(child, rows, _remaining, _tone) {
     if (rows.length === 0) return html`<div class="tmd-empty">${this._t("child.all_done")}</div>`;
     return html`<div class="grid">
-      ${rows.map(r => r.timed ? this._designTimed(r) : html`
+      ${rows.map(r => r.chore.task_type === 'checklist' ? this._designChecklist(r) : r.timed ? this._designTimed(r) : html`
         <div class="tmd-quest ${r.done ? "done" : ""} ${r.mandatory ? "mandatory" : ""} ${r.dimmed ? "dimmed" : ""}" style="--ac:${r.tone}">
           <div class="num q-num" style="${r.done ? "color:var(--tmd-good)" : ""}">${r.done ? "✓" : String(r.index + 1).padStart(2, "0")}</div>
           <span class="q-emoji">${r.glyph}</span>
@@ -2689,7 +2696,7 @@ class TaskMateChildCard extends LitElement {
   _designCleanpro(child, rows, _remaining, _tone) {
     if (rows.length === 0) return html`<div class="tmd-empty">${this._t("child.all_done")}</div>`;
     return html`<div class="tmd-checklist">
-      ${rows.map(r => r.timed ? this._designTimed(r) : html`
+      ${rows.map(r => r.chore.task_type === 'checklist' ? this._designChecklist(r) : r.timed ? this._designTimed(r) : html`
         <div class="tmd-check ${r.done ? "done" : ""} ${r.mandatory ? "mandatory" : ""} ${r.dimmed ? "dimmed" : ""}" style="--ac:${r.tone}">
           <div class="c-num" style="${r.done ? "--ac:var(--tmd-good)" : ""}">${r.done ? "✓" : r.index + 1}</div>
           <span class="c-emoji">${r.glyph}</span>
@@ -3433,6 +3440,7 @@ class TaskMateChildCard extends LitElement {
    * rounded star count contradicted the balance on the rest of the dashboard.
    */
   _renderPreReaderTile(chore, child, pointsIcon, todaysCompletions = []) {
+    if (chore.task_type === 'checklist') return this._renderChecklistChore(chore, child, pointsIcon);
     const dailyLimit = chore.daily_limit || 1;
     // Counted the same way the standard row does: pending completions hold a
     // place too, and a parent completing on behalf lands under "__parent__".
@@ -3510,6 +3518,7 @@ class TaskMateChildCard extends LitElement {
   }
 
   _renderChoreCard(chore, child, pointsIcon, todaysCompletions = [], choreIndex = 0) {
+    if (chore.task_type === 'checklist') return this._renderChecklistChore(chore, child, pointsIcon);
     const isLoading = this._loading[chore.id];
     const isCelebrating = this._celebrating === chore.id;
 
@@ -4021,7 +4030,77 @@ class TaskMateChildCard extends LitElement {
     `;
   }
 
+  _renderChecklistChore(chore, child, pointsIcon) {
+    const progress = window.__taskmate_checklist.progress(this, child, chore);
+    const attrs = window.__taskmate_attrs(this.hass, this.config.entity);
+    const done = !!progress.completion_id;
+    const blocked = !done && (attrs.chore_availability?.[chore.id]?.[child.id] === false || chore._isLockedPreview
+      || chore._isDependencyBlocked || chore._isRecurrenceLocked || chore._isFirstComeLocked);
+    return html`<section class="tm-checklist-chore" data-checklist-id="${chore.id}" aria-label="${chore.name}"
+      style="grid-column:1/-1;border:1px solid var(--tmd-border,var(--divider-color,#8886));border-radius:var(--tmd-radius,16px);padding:16px;margin-bottom:12px;background:var(--tmd-surface,var(--card-background-color,#fff))">
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
+        <span class="ch-emoji" style="font-size:32px">${this._choreGlyph(chore)}</span>
+        <div style="flex:1;min-width:0">
+          <div class="chore-name">${chore.name}${chore.mandatory ? html`<span class="mandatory-badge">⚠ ${this._t('child.mandatory')}</span>` : ''}</div>
+          <div style="display:flex;gap:4px;align-items:center"><ha-icon icon="${pointsIcon}" style="--mdc-icon-size:18px"></ha-icon>+${chore.effective_points ?? chore.points}</div>
+        </div>
+        ${done ? html`<ha-icon icon="${progress.approved === false ? 'mdi:clock-outline' : 'mdi:check-circle'}"></ha-icon>` : ''}
+      </div>
+      ${this.config.show_description && chore.description ? html`<p>${chore.description}</p>` : ''}
+      ${this._renderDeadlineBadge(chore, done)}
+      ${chore._isDependencyBlocked && chore._dependencyNames?.length ? html`<p>${this._t('child.blocked_by_dependency', { chores: chore._dependencyNames.join(', ') })}</p>` : ''}
+      ${done ? html`<p role="status">${this._t(progress.approved === false ? 'routine.waiting_for_parent' : 'child.checklist_complete')}</p>` : ''}
+      ${window.__taskmate_checklist.render(html, this, progress, !!this._loading[chore.id] || !!blocked,
+        (item, checked) => this._handleChecklistItem(chore, child, item, checked))}
+      ${!done && chore.require_photo ? html`<p style="font-size:.88em">📷 ${this._t('child.checklist_photo')}</p>` : ''}
+    </section>`;
+  }
+
+  async _handleChecklistItem(chore, child, item, checked, photoUrl = null, occurrenceId = null) {
+    if (this._loading[chore.id]) return;
+    const progress = window.__taskmate_checklist.progress(this, child, chore);
+    if (!progress.occurrence_id || (occurrenceId && progress.occurrence_id !== occurrenceId)) return;
+    const current = progress.items.find(i => i.id === item.id);
+    if (!current || current.checked === checked) return;
+    if (progress.completion_id && !window.__taskmate_chore_undo.canUndo(progress)) return;
+    const finalItem = checked && progress.items.every(i => i.id === item.id || i.checked);
+    if (finalItem && chore.require_photo && !photoUrl) {
+      this._openPhotoCapture(chore, child, null, { item, occurrenceId: progress.occurrence_id });
+      return;
+    }
+    const source = child.checklist_progress?.[chore.id];
+    this._loading = { ...this._loading, [chore.id]: true };
+    this.requestUpdate();
+    try {
+      const result = await this.hass.callService('taskmate', 'set_checklist_item', {
+        chore_id: chore.id, child_id: child.id, item_id: item.id, checked,
+        occurrence_id: progress.occurrence_id, ...(photoUrl ? { photo_url: photoUrl } : {}),
+      }, undefined, false, true);
+      const response = result?.response;
+      window.__taskmate_checklist.remember(this, child, chore, source, response?.progress);
+      if (response?.completed) {
+        this._celebrating = chore.id;
+        this._celebrationPoints = response.approved
+          ? (response.points_awarded ?? chore.effective_points ?? chore.points)
+          : (chore.effective_points ?? chore.points);
+        this._spawnConfetti();
+        this._playSound(chore.completion_sound || this.config.default_sound || 'coin');
+        clearTimeout(this._checklistCelebrationTimer);
+        this._checklistCelebrationTimer = setTimeout(() => { this._celebrationPoints = null; this._closeCelebration(); }, 2500);
+      } else if (!checked) {
+        this._closeCelebration();
+      }
+    } catch (error) {
+      this._notifyUndo(this._t('child.checklist_error', { message: error?.message || '' }));
+    } finally {
+      this._loading = { ...this._loading, [chore.id]: false };
+      this.requestUpdate();
+    }
+  }
+
   async _handleComplete(chore, child, photoUrl = null, extra = null) {
+    // A checklist only submits through its last checkbox; it has no whole-chore tap.
+    if (chore.task_type === 'checklist') return;
     const key = `${chore.id}_${child.id}`;
     const dailyLimit = chore.daily_limit || 1;
 
@@ -4176,9 +4255,9 @@ class TaskMateChildCard extends LitElement {
 
   // ── Photo-evidence capture ────────────────────────────────────────────────
 
-  _openPhotoCapture(chore, child, extra = null) {
+  _openPhotoCapture(chore, child, extra = null, checklist = null) {
     this._photoCapture = {
-      chore, child, extra, step: "pick", previewUrl: "", blob: null,
+      chore, child, extra, checklist, step: "pick", previewUrl: "", blob: null,
       sizeKb: 0, error: "",
     };
     this.requestUpdate();
@@ -4283,7 +4362,11 @@ class TaskMateChildCard extends LitElement {
 
       const { chore, child, extra } = cap;
       this._closePhotoCapture();
-      await this._handleComplete(chore, child, photoUrl, extra);
+      if (cap.checklist) {
+        await this._handleChecklistItem(chore, child, cap.checklist.item, true, photoUrl, cap.checklist.occurrenceId);
+      } else {
+        await this._handleComplete(chore, child, photoUrl, extra);
+      }
     } catch (err) {
       // Keep the overlay open on the preview so the child can retry.
       if (this._photoCapture) {
@@ -4493,6 +4576,7 @@ class TaskMateChildCard extends LitElement {
       await this.hass.callService("taskmate", service, {
         completion_id: completionId,
       });
+      this._checklistSnapshots?.delete(`${child.id}:${chore.id}`);
 
       // Play undo sound (sad/descending tone)
       const undoSoundToPlay = this.config.undo_sound || 'undo';
@@ -4508,7 +4592,7 @@ class TaskMateChildCard extends LitElement {
           if (k.startsWith(`${chore.id}_bonus_`) && k.endsWith(`_${child.id}`)) delete newOptimistic[k];
         }
       }
-      this._celebrating = null;
+      this._closeCelebration();
       this._optimisticCompletions = newOptimistic;
 
     } catch (error) {
@@ -4548,6 +4632,9 @@ class TaskMateChildCard extends LitElement {
   }
 
   _closeCelebration() {
+    clearTimeout(this._checklistCelebrationTimer);
+    this._checklistCelebrationTimer = null;
+    this._celebrationPoints = null;
     this._celebrating = null;
     this.requestUpdate();
   }

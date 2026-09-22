@@ -1847,5 +1847,19 @@
   "panel.settings_chore_undo_label": "Zeitfenster zum Rückgängigmachen (Sekunden)",
   "panel.settings_chore_undo_hint": "Gilt für alle Kinder und Dashboards. Automatisch bestätigte Aufgaben können 0–3600 Sekunden lang rückgängig gemacht werden; 0 deaktiviert dieses Zeitfenster. Ausstehende Einreichungen können bis zur Bestätigung durch ein Elternteil zurückgezogen werden.",
   "child.undo_recent": "Letzte Aufgaben rückgängig machen",
-  "child.undo_named": "{name} rückgängig machen"
+  "child.undo_named": "{name} rückgängig machen",
+  "panel.chore_task_type_checklist": "Checkliste — feste Punkte, wenn alle Einträge abgehakt sind",
+  "panel.chore_checklist_label": "Einträge der Checkliste",
+  "panel.chore_checklist_hint": "Alle Einträge sind erforderlich und können in beliebiger Reihenfolge abgehakt werden. Einzelne Einträge geben keine Punkte. Der letzte Haken reicht die Aufgabe automatisch für die gesamte Belohnung ein, bei Bedarf mit Elternfreigabe oder Fotobeweis.",
+  "panel.chore_checklist_item_label": "Eintrag {number}",
+  "panel.chore_checklist_item_placeholder": "z. B. Schlafanzug wegräumen",
+  "panel.chore_checklist_add": "Eintrag hinzufügen",
+  "panel.chore_checklist_invalid": "Füge 1–30 Einträge hinzu. Jeder Eintrag braucht einen Namen mit 1–200 Zeichen.",
+  "panel.chore_checklist_open_ended_hint": "Checklisten haben eine feste Belohnung und können daher nicht offen abgeschlossen werden.",
+  "child.checklist_progress": "{done} von {total} Einträgen abgehakt",
+  "child.checklist_hint": "Hake alle Einträge ab, um diese Aufgabe abzuschließen.",
+  "child.checklist_complete": "Checkliste abgeschlossen",
+  "child.checklist_error": "Checkliste konnte nicht aktualisiert werden: {message}",
+  "child.checklist_photo": "Hake den letzten Eintrag ab und füge zum Abschluss ein Foto hinzu.",
+  "common.checklist_use_child_card": "Fülle die Checkliste auf dem Kinder-Dashboard aus"
 }

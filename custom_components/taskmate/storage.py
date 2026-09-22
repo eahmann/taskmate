@@ -180,6 +180,7 @@ class TaskMateStorage:
             "task_groups": [],
             "routines": [],
             "routine_runs": [],
+            "checklist_progress": [],
             "badges": [],
             "awarded_badges": [],
             "timed_sessions": [],
@@ -445,6 +446,7 @@ class TaskMateStorage:
         """Remove a child and cascade-delete their awarded badges."""
         self._data["children"] = [c for c in self._data.get("children", []) if c.get("id") != child_id]
         self.remove_awards_for_child(child_id)
+        self.remove_checklist_progress(child_id=child_id)
 
     # Chores management
     def get_chores(self) -> list[Chore]:
@@ -476,6 +478,7 @@ class TaskMateStorage:
     def remove_chore(self, chore_id: str) -> None:
         """Remove a chore."""
         self._data["chores"] = [c for c in self._data.get("chores", []) if c.get("id") != chore_id]
+        self.remove_checklist_progress(chore_id=chore_id)
         order = self._data.get("chore_display_order", [])
         if chore_id in order:
             order.remove(chore_id)
@@ -483,6 +486,36 @@ class TaskMateStorage:
     def set_chore_display_order(self, order: list[str]) -> None:
         """Set the global chore display order."""
         self._data["chore_display_order"] = list(order)
+
+    def get_checklist_progress(self, chore_id: str, child_id: str) -> dict:
+        """Read the most recent checklist occurrence for one child."""
+        from copy import deepcopy
+
+        return deepcopy(
+            next(
+                (
+                    p
+                    for p in self._data.get("checklist_progress", [])
+                    if p["chore_id"] == chore_id and p["child_id"] == child_id
+                ),
+                {},
+            )
+        )
+
+    def save_checklist_progress(self, progress: dict) -> None:
+        """Replace a child's current occurrence without sharing mutable data."""
+        from copy import deepcopy
+
+        self.remove_checklist_progress(chore_id=progress["chore_id"], child_id=progress["child_id"])
+        self._data.setdefault("checklist_progress", []).append(deepcopy(progress))
+
+    def remove_checklist_progress(self, *, chore_id: str = "", child_id: str = "") -> None:
+        """Cascade progress when its chore or child is removed."""
+        self._data["checklist_progress"] = [
+            p
+            for p in self._data.get("checklist_progress", [])
+            if not ((not chore_id or p["chore_id"] == chore_id) and (not child_id or p["child_id"] == child_id))
+        ]
 
     # Rewards management
     def get_rewards(self) -> list[Reward]:
@@ -1362,6 +1395,7 @@ class TaskMateStorage:
         if not isinstance(data, dict):
             raise ValueError("import data must be an object")
         self._validate_routine_backup(data)
+        self._validate_checklist_backup(data)
         self._data = copy.deepcopy(data)
         list_keys = (
             "children",
@@ -1372,6 +1406,7 @@ class TaskMateStorage:
             "task_groups",
             "routines",
             "routine_runs",
+            "checklist_progress",
             "completions",
             "mandatory_misses",
             "reward_claims",
@@ -1395,6 +1430,73 @@ class TaskMateStorage:
         if not isinstance(self._data.get("challenge_progress"), dict):
             self._data["challenge_progress"] = {}
         self._sanitize_imported_records()
+
+    @staticmethod
+    def _validate_checklist_backup(data: dict) -> None:
+        """Validate checklist data before replacing a working installation."""
+        from .checklist import normalize_checklist_items
+
+        def validate_items(items, *, required=False):
+            normalized = normalize_checklist_items(items, required=required)
+            if any(not isinstance(item.get("id"), str) or not item["id"] for item in items):
+                raise ValueError("Saved checklist items need stable IDs")
+            return {item["id"] for item in normalized}
+
+        try:
+            for raw in data.get("chores", []) or []:
+                if not isinstance(raw, dict):
+                    continue
+                checklist = raw.get("task_type") == "checklist"
+                if checklist or "checklist_items" in raw:
+                    validate_items(raw.get("checklist_items", []), required=checklist)
+                if checklist and raw.get("open_ended"):
+                    raise ValueError("Checklist chores cannot be open-ended")
+            progress = data.get("checklist_progress", [])
+            if not isinstance(progress, list):
+                raise ValueError("Checklist progress must be a list")
+            seen = set()
+            for record in progress:
+                if not isinstance(record, dict):
+                    raise ValueError("Invalid checklist progress")
+                for key in (
+                    "chore_id",
+                    "child_id",
+                    "occurrence_id",
+                    "period",
+                    "signature",
+                    "completion_id",
+                    "final_item_id",
+                ):
+                    if not isinstance(record.get(key), str) or len(record[key]) > 200:
+                        raise ValueError(f"Invalid checklist {key}")
+                if not all(record[key] for key in ("chore_id", "child_id", "occurrence_id", "period", "signature")):
+                    raise ValueError("Checklist occurrence identifiers cannot be empty")
+                pair = (record["chore_id"], record["child_id"])
+                if pair in seen:
+                    raise ValueError("Duplicate checklist progress")
+                seen.add(pair)
+                checked = record.get("checked_ids")
+                if (
+                    not isinstance(checked, list)
+                    or len(checked) > 30
+                    or any(not isinstance(i, str) or not i or len(i) > 64 for i in checked)
+                    or len(set(checked)) != len(checked)
+                ):
+                    raise ValueError("Invalid checklist checked items")
+            for raw in data.get("completions", []) or []:
+                if not isinstance(raw, dict):
+                    continue
+                if raw.get("checklist_occurrence_id"):
+                    for key in ("checklist_occurrence_id", "checklist_final_item_id"):
+                        if not isinstance(raw.get(key), str) or not raw[key] or len(raw[key]) > 64:
+                            raise ValueError(f"Invalid checklist completion {key}")
+                    item_ids = validate_items(raw.get("checklist_items"), required=True)
+                    if raw["checklist_final_item_id"] not in item_ids:
+                        raise ValueError("Checklist completion final item is missing")
+                elif "checklist_items" in raw:
+                    validate_items(raw["checklist_items"])
+        except (ValueError, TypeError, KeyError) as err:
+            raise ValueError(f"Invalid checklist backup: {err}") from err
 
     @staticmethod
     def _validate_routine_backup(data: dict) -> None:

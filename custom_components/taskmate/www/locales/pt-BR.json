@@ -1847,5 +1847,19 @@
   "panel.settings_chore_undo_label": "Prazo para desfazer tarefas (segundos)",
   "panel.settings_chore_undo_hint": "Aplica-se a todas as crianças e painéis. Tarefas aprovadas automaticamente podem ser desfeitas por 0–3600 segundos após a conclusão; 0 desativa esse prazo. Envios pendentes podem ser retirados até serem aprovados por um responsável.",
   "child.undo_recent": "Desfazer tarefas recentes",
-  "child.undo_named": "Desfazer {name}"
+  "child.undo_named": "Desfazer {name}",
+  "panel.chore_task_type_checklist": "Lista de verificação — pontos fixos ao marcar todos os itens",
+  "panel.chore_checklist_label": "Itens da lista de verificação",
+  "panel.chore_checklist_hint": "Todos os itens são obrigatórios e podem ser marcados em qualquer ordem. Os itens não dão pontos individualmente. Marcar o último item envia automaticamente a tarefa para receber a recompensa completa, com aprovação dos pais ou foto se necessário.",
+  "panel.chore_checklist_item_label": "Etapa {number}",
+  "panel.chore_checklist_item_placeholder": "ex.: Guardar o pijama",
+  "panel.chore_checklist_add": "Adicionar item",
+  "panel.chore_checklist_invalid": "Adicione de 1 a 30 itens. Dê a cada item um nome com 1 a 200 caracteres.",
+  "panel.chore_checklist_open_ended_hint": "As listas de verificação têm uma recompensa fixa, por isso a conclusão em aberto não está disponível.",
+  "child.checklist_progress": "{done} de {total} itens marcados",
+  "child.checklist_hint": "Marque todos os itens para concluir esta tarefa.",
+  "child.checklist_complete": "Lista de verificação concluída",
+  "child.checklist_error": "Não foi possível atualizar a lista: {message}",
+  "child.checklist_photo": "Marque o último item e adicione uma foto para concluir.",
+  "common.checklist_use_child_card": "Complete a lista de verificação no painel da criança"
 }

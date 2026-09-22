@@ -570,6 +570,9 @@ class TaskMatePanel extends HTMLElement {
     if (act === "skip-chore") { this._doSkipChore(t.dataset.id); return; }
     if (act === "toggle-chore-active") { this._doToggleChoreActive(t.dataset.id); return; }
     if (act === "save-chore")   { this._doSaveChore(); return; }
+    if (act === "add-checklist-item") { this._addChecklistItem(); return; }
+    if (act === "remove-checklist-item") { this._removeChecklistItem(Number(t.dataset.idx)); return; }
+    if (act === "move-checklist-item") { this._moveChecklistItem(Number(t.dataset.idx), Number(t.dataset.dir)); return; }
     if (act === "bulk-add-chore") { this._openBulkAddDialog(); return; }
     if (act === "save-bulk-chores") { this._doSaveBulkChores(); return; }
     if (act === "rename-chore-start") { this._startInlineRename("chore", t.dataset.id); return; }
@@ -910,15 +913,7 @@ class TaskMatePanel extends HTMLElement {
       let value;
       if (t.type === "checkbox" || t.tagName === "HA-SWITCH") value = t.checked;
       else value = (t.type === "number") ? (t.value === "" ? null : Number(t.value)) : t.value;
-      const arrMatch = field.match(/^(\w+)\[(\d+)\]\.(\w+)$/);
-      if (arrMatch) {
-        const [, arr, idx, prop] = arrMatch;
-        if (this._dialog.data[arr] && this._dialog.data[arr][Number(idx)] !== undefined) {
-          this._dialog.data[arr][Number(idx)][prop] = value;
-        }
-      } else {
-        this._dialog.data[field] = value;
-      }
+      this._setDialogField(field, value);
       return;
     }
   }
@@ -1038,8 +1033,23 @@ class TaskMatePanel extends HTMLElement {
     if (t.type === "checkbox" || t.tagName === "HA-SWITCH") value = t.checked;
     else if (t.type === "number") value = (t.value === "" ? null : Number(t.value));
     else value = t.value;
-    this._dialog.data[t.dataset.field] = value;
+    this._setDialogField(t.dataset.field, value);
     if (t.dataset.rerender === "true") this._render();
+  }
+
+  _setDialogField(field, value) {
+    const d = this._dialog.data;
+    const arrMatch = field.match(/^(\w+)\[(\d+)\]\.(\w+)$/);
+    if (arrMatch) {
+      const [, arr, idx, prop] = arrMatch;
+      if (d[arr]?.[Number(idx)]) d[arr][Number(idx)][prop] = value;
+      return;
+    }
+    d[field] = value;
+    if (this._dialog.kind === "chore" && field === "task_type" && value === "checklist") {
+      d.open_ended = false;
+      if (!d.checklist_items?.length) d.checklist_items = [this._newChecklistItem()];
+    }
   }
 
   _onValueChanged(e) {
@@ -1453,6 +1463,7 @@ class TaskMatePanel extends HTMLElement {
     const blank = {
       name: "", description: "", points: 10,
       task_type: "standard",
+      checklist_items: [],
       timed_rate_points: 10, timed_rate_minutes: 5, timed_max_daily_minutes: 0,
       assigned_to: [], requires_approval: true,
       time_category: "anytime", completion_sound: "coin", daily_limit: 1,
@@ -1488,6 +1499,7 @@ class TaskMatePanel extends HTMLElement {
         publish_calendar_entities: [...(c.publish_calendar_entities || [])],
         depends_on: [...(c.depends_on || [])],
         bonus_subtasks: (c.bonus_subtasks || []).map(b => ({...b})),
+        checklist_items: (c.checklist_items || []).map(item => ({ ...item })),
         visibility_operator: c.visibility_operator || "none",
         weather_block_conditions: [...(c.weather_block_conditions || [])],
         // null/undefined limits render as an empty input, not "null"
@@ -1678,6 +1690,14 @@ class TaskMatePanel extends HTMLElement {
     this._syncIconPickers();
     const d = this._dialog.data;
     if (!d.name || !d.name.trim()) { this._showToast("err", this._t("panel.toast_name_required")); return; }
+    const checklistItems = d.task_type === "checklist"
+      ? (d.checklist_items || []).map(item => ({ id: item.id, name: (item.name || "").trim() }))
+      : [];
+    if (d.task_type === "checklist" && (checklistItems.length < 1 || checklistItems.length > 30
+      || checklistItems.some(item => !item.name || item.name.length > 200))) {
+      this._showToast("err", this._t("panel.chore_checklist_invalid"));
+      return;
+    }
     const wasAdd = this._dialog.mode === "add";
     const base = {
       name: d.name.trim(),
@@ -1721,13 +1741,14 @@ class TaskMatePanel extends HTMLElement {
       mandatory: !!d.mandatory,
       mandatory_penalty_points: Math.max(0, Number(d.mandatory_penalty_points) || 0),
       require_photo: !!d.require_photo,
-      open_ended: !!d.open_ended,
+      open_ended: d.task_type === "checklist" ? false : !!d.open_ended,
       publish_calendar_entities: d.publish_calendar_entities || [],
       bonus_subtasks: (d.bonus_subtasks || []).filter(b => b.name && b.name.trim()).map(b => ({
         name: b.name.trim(), points: Number(b.points) || 5,
         description: b.description || "", ...(b.id ? {id: b.id} : {}),
       })),
       task_type: d.task_type || "standard",
+      checklist_items: checklistItems,
       timed_rate_points: Number(d.timed_rate_points) || 10,
       timed_rate_minutes: Math.max(1, Number(d.timed_rate_minutes) || 5),
       timed_max_daily_minutes: Math.max(0, Number(d.timed_max_daily_minutes) || 0),
@@ -1744,6 +1765,39 @@ class TaskMatePanel extends HTMLElement {
     this._closeDialog(true);
     await this._fetchState();
     this._showToast("ok", wasAdd ? this._t("panel.toast_chore_added") : this._t("panel.toast_chore_updated"));
+  }
+
+  _newChecklistItem() {
+    return {
+      id: globalThis.crypto?.randomUUID?.() || `item_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`,
+      name: "",
+    };
+  }
+
+  _addChecklistItem() {
+    if (this._dialog?.kind !== "chore") return;
+    const d = this._dialog.data;
+    d.checklist_items = d.checklist_items || [];
+    if (d.checklist_items.length >= 30) return;
+    d.checklist_items.push(this._newChecklistItem());
+    this._render();
+    this.querySelector(`[data-field="checklist_items[${d.checklist_items.length - 1}].name"]`)?.focus();
+  }
+
+  _removeChecklistItem(idx) {
+    const items = this._dialog?.data.checklist_items;
+    if (!items || !Number.isInteger(idx) || idx < 0 || idx >= items.length) return;
+    items.splice(idx, 1);
+    this._render();
+  }
+
+  _moveChecklistItem(idx, direction) {
+    const items = this._dialog?.data.checklist_items;
+    const target = idx + direction;
+    if (!items || !Number.isInteger(idx) || ![-1, 1].includes(direction)
+      || idx < 0 || idx >= items.length || target < 0 || target >= items.length) return;
+    [items[idx], items[target]] = [items[target], items[idx]];
+    this._render();
   }
 
   _addBonusSubtask() {
@@ -5561,6 +5615,31 @@ class TaskMatePanel extends HTMLElement {
     );
   }
 
+  _renderChecklistEditor(d) {
+    const items = d.checklist_items || [];
+    return `<section class="tm-checklist-editor" aria-label="${this._t("panel.chore_checklist_label")}">
+      <div class="tm-field-label">${this._t("panel.chore_checklist_label")}</div>
+      <p class="tm-field-hint">${this._t("panel.chore_checklist_hint")}</p>
+      ${items.map((item, idx) => `<div class="tm-checklist-item-editor">
+        <div class="tm-field" style="flex:1;min-width:0;margin:0">
+          <label class="tm-field-label" for="tm-checklist-item-${idx}">${this._t("panel.chore_checklist_item_label", { number: idx + 1 })}</label>
+          <input class="tm-input" id="tm-checklist-item-${idx}" type="text" maxlength="200" required
+            value="${this._esc(item.name)}" data-field="checklist_items[${idx}].name"
+            placeholder="${this._t("panel.chore_checklist_item_placeholder")}">
+        </div>
+        <div class="tm-checklist-item-controls">
+          <button type="button" class="tm-btn tm-btn-sm" data-act="move-checklist-item" data-idx="${idx}" data-dir="-1"
+            aria-label="${this._t("panel.routine_move_up")}" ${idx === 0 ? "disabled" : ""}>▲</button>
+          <button type="button" class="tm-btn tm-btn-sm" data-act="move-checklist-item" data-idx="${idx}" data-dir="1"
+            aria-label="${this._t("panel.routine_move_down")}" ${idx === items.length - 1 ? "disabled" : ""}>▼</button>
+          <button type="button" class="tm-btn tm-btn-sm" data-act="remove-checklist-item" data-idx="${idx}"
+            aria-label="${this._t("panel.tooltip_remove")}">✕</button>
+        </div>
+      </div>`).join("")}
+      <button type="button" class="tm-btn" data-act="add-checklist-item" ${items.length >= 30 ? "disabled" : ""}>${this._t("panel.chore_checklist_add")}</button>
+    </section>`;
+  }
+
   _renderChoreDialog() {
     const d = this._dialog.data;
     const children = this._state.children || [];
@@ -5575,6 +5654,7 @@ class TaskMatePanel extends HTMLElement {
       .sort();
 
     const isTimedTask = d.task_type === "timed";
+    const isChecklist = d.task_type === "checklist";
 
     return this._dialogShell(this._dialog.mode === "add" ? this._t("panel.dialog_add_chore") : this._t("panel.dialog_edit_chore"),
       [
@@ -5587,6 +5667,7 @@ class TaskMatePanel extends HTMLElement {
         this._select(this._t("panel.chore_task_type_label"), "task_type", d.task_type || "standard", [
           { v: "standard", l: this._t("panel.chore_task_type_standard") },
           { v: "timed", l: this._t("panel.chore_task_type_timed") },
+          { v: "checklist", l: this._t("panel.chore_task_type_checklist") },
         ], "", true),
         isTimedTask ? `<div class="tm-field-row">
           ${this._field(this._t("panel.chore_points_per_window_label"), "timed_rate_points", d.timed_rate_points || 10, "number")}
@@ -5599,6 +5680,7 @@ class TaskMatePanel extends HTMLElement {
           ${this._field(this._t("panel.chore_points_label"), "points", d.points, "number")}
           ${d.assignment_mode === "first_come" ? "" : this._field(this._t("panel.chore_daily_limit_label"), "daily_limit", d.daily_limit, "number")}
         </div>`,
+        isChecklist ? this._renderChecklistEditor(d) : "",
         this._select(this._t("panel.chore_assignment_mode_label"), "assignment_mode", d.assignment_mode, ASSIGNMENT_MODES,
           this._t("panel.chore_assignment_mode_hint"), true),
         !isUnassigned ? (children.length > 0 ? `
@@ -5671,8 +5753,11 @@ class TaskMatePanel extends HTMLElement {
         this._switch(this._t("panel.chore_approval_label"), "requires_approval", d.requires_approval),
         this._switch(this._t("panel.chore_require_photo_label"), "require_photo", d.require_photo,
           this._t("panel.chore_require_photo_hint")),
-        this._switch(this._t("panel.chore_open_ended_label"), "open_ended", d.open_ended,
-          this._t("panel.chore_open_ended_hint")),
+        isChecklist ? `<div class="tm-check-row"><ha-switch disabled aria-label="${this._t("panel.chore_open_ended_label")}"></ha-switch><div>
+          <div class="tm-check-title">${this._t("panel.chore_open_ended_label")}</div>
+          <span class="tm-field-hint">${this._t("panel.chore_checklist_open_ended_hint")}</span></div></div>`
+          : this._switch(this._t("panel.chore_open_ended_label"), "open_ended", d.open_ended,
+            this._t("panel.chore_open_ended_hint")),
         this._switch(this._t("panel.chore_require_availability"), "require_availability", d.require_availability,
           this._t("panel.chore_require_availability_hint")),
         this._switch(this._t("panel.chore_mandatory_label"), "mandatory", d.mandatory,
@@ -6599,7 +6684,7 @@ class TaskMatePanel extends HTMLElement {
     if (!c) return;
     const esc = this._esc.bind(this);
     const items = [];
-    if (this._state.parent_completable && this._state.parent_completable[id])
+    if (c.task_type !== "checklist" && this._state.parent_completable && this._state.parent_completable[id])
       items.push({ act: "parent-complete-chore", icon: "👤✓", label: this._t("panel.parent_complete_tooltip") });
     if (["alternating", "random", "balanced"].includes(c.assignment_mode))
       items.push({ act: "skip-chore", icon: "⏭", label: this._t("panel.btn_skip_chore") });
@@ -8207,6 +8292,9 @@ class TaskMatePanel extends HTMLElement {
       .tm-tpl-confirm-bar div { font-size: 13px; color: var(--tm-text-muted); }
       .tm-tpl-confirm-bar strong { color: var(--tm-text); }
       .tm-tpl-checklist { max-height: 320px; overflow-y: auto; }
+      .tm-checklist-editor { margin: 12px 0 20px; padding: 16px; border: 1px solid var(--divider-color); border-radius: 12px; }
+      .tm-checklist-item-editor { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+      .tm-checklist-item-controls { display: flex; gap: 4px; }
       .tm-tpl-check-row {
         display: flex; align-items: center; gap: 10px;
         padding: 8px 0; border-bottom: 1px solid var(--tm-border-soft);

@@ -1847,5 +1847,19 @@
   "panel.settings_chore_undo_label": "Angrefrist for oppgåver (sekund)",
   "panel.settings_chore_undo_hint": "Gjeld alle barn og dashbord. Automatisk godkjende oppgåver kan angrast i 0–3600 sekund etter fullføring; 0 deaktiverer fristen. Innsendingar som ventar på godkjenning, kan trekkjast tilbake til ein forelder godkjenner dei.",
   "child.undo_recent": "Angre nylege oppgåver",
-  "child.undo_named": "Angre {name}"
+  "child.undo_named": "Angre {name}",
+  "panel.chore_task_type_checklist": "Sjekkliste — faste poeng når alle punkta er kryssa av",
+  "panel.chore_checklist_label": "Punkt i sjekklista",
+  "panel.chore_checklist_hint": "Alle punkta er obligatoriske og kan kryssast av i valfri rekkjefølgje. Enkeltpunkt gjev ingen poeng. Det siste krysset sender automatisk inn oppgåva for heile løna, med foreldregodkjenning eller bilete dersom det krevst.",
+  "panel.chore_checklist_item_label": "Punkt {number}",
+  "panel.chore_checklist_item_placeholder": "t.d. Legg bort pysjamasen",
+  "panel.chore_checklist_add": "Legg til punkt",
+  "panel.chore_checklist_invalid": "Legg til 1–30 punkt. Gje kvart punkt eit namn på 1–200 teikn.",
+  "panel.chore_checklist_open_ended_hint": "Sjekklister har ei fast løn, så open fullføring er ikkje tilgjengeleg.",
+  "child.checklist_progress": "{done} av {total} punkt kryssa av",
+  "child.checklist_hint": "Kryss av alle punkta for å fullføre oppgåva.",
+  "child.checklist_complete": "Sjekklista er fullført",
+  "child.checklist_error": "Klarte ikkje oppdatere sjekklista: {message}",
+  "child.checklist_photo": "Kryss av det siste punktet og legg til eit bilete for å fullføre.",
+  "common.checklist_use_child_card": "Fullfør sjekklista på dashbordet til barnet"
 }

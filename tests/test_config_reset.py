@@ -63,6 +63,7 @@ async def test_reset_clears_all_data_and_settings_to_fresh_defaults(hass):
             "future_collection": [{"private": "test data"}],
             "season_points": {"2026-09": {"test": 100}},
             "quest_progress": {"quest": {"test": {"step": 2}}},
+            "checklist_progress": [{"chore_id": "test-chore", "child_id": "test", "checked_ids": ["item"]}],
             "badges": [{"id": "custom-test-badge", "name": "Test badge"}],
         }
     )
@@ -79,6 +80,7 @@ async def test_reset_clears_all_data_and_settings_to_fresh_defaults(hass):
     assert "future_collection" not in storage.data
     assert "season_points" not in storage.data
     assert "quest_progress" not in storage.data
+    assert storage.data["checklist_progress"] == []
     assert {b.id for b in storage.get_badges()} == {b.id for b in BUILTIN_CATALOGUE}
     assert storage.get_notification_config("pending_reward_claim").master_enabled
     assert storage.get_notification_config("pending_reward_claim").routes == {}

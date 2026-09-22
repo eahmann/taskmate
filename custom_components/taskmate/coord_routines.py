@@ -194,13 +194,25 @@ class RoutinesMixin:
             if not members:
                 continue
             required = {m["chore_id"] for m in members if m.get("required", True)}
+            display_members = []
+            for member in members:
+                display_member = dict(member)
+                chore = self.storage.get_chore(member["chore_id"])
+                if chore and chore.task_type == "checklist":
+                    progress = self.checklist_progress_for_chore(chore, child_id)
+                    display_member.update(
+                        task_type="checklist",
+                        checklist_items=progress["items"],
+                        checklist_occurrence_id=progress["occurrence_id"],
+                    )
+                display_members.append(display_member)
             out.append(
                 {
                     "id": routine.id,
                     "name": routine.name,
                     "icon": routine.icon,
                     "description": routine.description,
-                    "members": members,
+                    "members": display_members,
                     "required_count": len(required),
                     "completed_count": len(required & approved),
                     "pending_count": len(required & pending),
