@@ -1847,5 +1847,19 @@
   "panel.settings_chore_undo_label": "Chore undo window (seconds)",
   "panel.settings_chore_undo_hint": "Applies to all children and dashboards. Automatically approved chores can be undone for 0–3600 seconds after completion; 0 disables this window. Pending submissions can be withdrawn until a parent approves them.",
   "child.undo_recent": "Undo recent chores",
-  "child.undo_named": "Undo {name}"
+  "child.undo_named": "Undo {name}",
+  "panel.chore_task_type_checklist": "Checklist — fixed points when all items are checked",
+  "panel.chore_checklist_label": "Checklist items",
+  "panel.chore_checklist_hint": "Every item is required and can be checked in any order. Items earn no points on their own. Checking the last item automatically submits the chore for its full award, with parent approval or photo proof if required.",
+  "panel.chore_checklist_item_label": "Item {number}",
+  "panel.chore_checklist_item_placeholder": "e.g. Put pyjamas away",
+  "panel.chore_checklist_add": "Add item",
+  "panel.chore_checklist_invalid": "Add 1–30 checklist items. Give every item a name of 1–200 characters.",
+  "panel.chore_checklist_open_ended_hint": "Checklists have a fixed award, so open-ended completion is unavailable.",
+  "child.checklist_progress": "{done} of {total} items checked",
+  "child.checklist_hint": "Check every item to finish this chore.",
+  "child.checklist_complete": "Checklist complete",
+  "child.checklist_error": "Could not update checklist: {message}",
+  "child.checklist_photo": "Check the last item and add a photo to finish.",
+  "common.checklist_use_child_card": "Complete the checklist on the child dashboard"
 }

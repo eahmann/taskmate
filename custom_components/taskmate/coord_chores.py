@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from homeassistant.util import dt as dt_util
 
 from . import images, photos
+from .checklist import normalize_checklist_items, validate_checklist_chore
 from .chore_undo import child_undo_metadata
 from .const import CHORE_NOTE_MAX_LENGTH, CHORE_SUGGESTED_POINTS_MAX
 from .models import Chore, ChoreCompletion, PointsTransaction
@@ -78,6 +79,9 @@ class ChoresMixin:
         manual_start_child_id: str = "",
         deadline_at: str = "",
         speed_bonus_points: int = 0,
+        task_type: str = "standard",
+        checklist_items: list[dict[str, str]] | None = None,
+        open_ended: bool = False,
     ) -> Chore:
         """Add a new chore."""
         # One-shot chores: force daily_limit=1, set created_date to today
@@ -129,7 +133,11 @@ class ChoresMixin:
             require_availability=require_availability,
             deadline_at=deadline_at,
             speed_bonus_points=max(0, int(speed_bonus_points or 0)),
+            task_type=task_type,
+            checklist_items=checklist_items or [],
+            open_ended=open_ended,
         )
+        validate_checklist_chore(chore)
         # Cache today's active child so the card can show it immediately
         active = self._compute_active_children(chore, today)
         if active and chore.assignment_mode not in ("everyone", "first_come"):
@@ -336,6 +344,9 @@ class ChoresMixin:
         data.pop("id", None)
         for sub in data.get("bonus_subtasks", []) or []:
             sub.pop("id", None)  # fresh ids for the copied subtasks
+        for item in data.get("checklist_items", []):
+            item.pop("id", None)
+        data["checklist_items"] = normalize_checklist_items(data.get("checklist_items", []))
         # Reset per-run / ephemeral state so the clone starts clean.
         data["assignment_current_child_id"] = ""
         data["skip_date"] = ""
@@ -477,9 +488,14 @@ class ChoresMixin:
 
     async def async_update_chore(self, chore: Chore) -> None:
         """Update a chore."""
+        validate_checklist_chore(chore)
         today = dt_util.as_local(dt_util.now()).date()
         # Capture pre-update state before storage is mutated below.
         existing = self.storage.get_chore(chore.id)
+        if existing and existing.task_type != chore.task_type:
+            if any(s.chore_id == chore.id for s in self.storage.get_timed_sessions()):
+                raise ValueError("Stop active timers before changing this chore's type")
+            self.storage.remove_checklist_progress(chore_id=chore.id)
         prev_entities = list(getattr(existing, "publish_calendar_entities", []) or []) if existing else []
         prev_name = (existing.name if existing else "") or ""
         prev_image = (getattr(existing, "image_url", "") or "") if existing else ""
@@ -698,6 +714,8 @@ class ChoresMixin:
         photo_url: str = "",
         note: str = "",
         suggested_points: int = 0,
+        *,
+        _checklist_occurrence_id: str = "",
     ) -> ChoreCompletion | None:
         """Mark a chore as completed by a child.
 
@@ -718,6 +736,19 @@ class ChoresMixin:
         child = self.get_child(child_id)
         if not child:
             raise ValueError(f"Child {child_id} not found")
+
+        checklist_state = None
+        if chore.task_type == "checklist":
+            checklist_state = self.storage.get_checklist_progress(chore_id, child_id)
+            if (
+                not _checklist_occurrence_id
+                or checklist_state.get("occurrence_id") != _checklist_occurrence_id
+                or not chore.checklist_items
+                or not all(item["id"] in checklist_state.get("checked_ids", []) for item in chore.checklist_items)
+            ):
+                raise ValueError("Check every checklist item to submit this chore")
+            if checklist_state.get("completion_id"):
+                return None
 
         # Security: photo_url must be one of OUR upload URLs
         # (/api/taskmate/photo/<uuid>.<ext>). The service accepts it as a free
@@ -879,12 +910,18 @@ class ChoresMixin:
             note=note,
             suggested_points=suggested_points,
             child_undo_allowed=not as_parent,
+            checklist_occurrence_id=_checklist_occurrence_id,
+            checklist_items=[dict(item) for item in chore.checklist_items] if checklist_state else [],
+            checklist_final_item_id=checklist_state.get("final_item_id", "") if checklist_state else "",
         )
 
         # Reserve the daily quota before awarding. Notification delivery is
         # deferred until this record and the associated balances are complete.
         self._prepare_routine_runs(chore_id, child_id)
         self.storage.add_completion(completion)
+        if checklist_state:
+            checklist_state["completion_id"] = completion.id
+            self.storage.save_checklist_progress(checklist_state)
 
         award_notifications = []
         if auto_approve:
@@ -959,6 +996,8 @@ class ChoresMixin:
         chore = self.get_chore(chore_id)
         if not chore:
             raise ValueError(f"Chore {chore_id} not found")
+        if chore.task_type == "checklist":
+            raise ValueError("Check every checklist item to submit this chore")
 
         if not getattr(chore, "enabled", True):
             raise ValueError(f"Chore '{chore.name}' is disabled")
@@ -1373,7 +1412,7 @@ class ChoresMixin:
 
         return bonus_completions
 
-    async def async_undo_chore(self, completion_id: str) -> None:
+    async def async_undo_chore(self, completion_id: str, *, _checklist_item_id: str = "") -> None:
         """Withdraw a child submission, respecting parent review and the grace period.
 
         Re-read after authorization has awaited. Validation and award reversal
@@ -1388,9 +1427,9 @@ class ChoresMixin:
         deadline = datetime.fromisoformat(policy["child_undo_until"]) if policy.get("child_undo_until") else None
         if not policy.get("child_undo_pending") and not (deadline and dt_util.now() < deadline):
             raise ValueError("The undo window has closed or a parent has reviewed this chore. Ask a parent to undo it.")
-        await self.async_reject_chore(completion_id)
+        await self.async_reject_chore(completion_id, _checklist_item_id=_checklist_item_id)
 
-    async def async_reject_chore(self, completion_id: str) -> None:
+    async def async_reject_chore(self, completion_id: str, *, _checklist_item_id: str = "") -> None:
         """Reject a chore completion and fully reverse all awards if already granted."""
         completions = self.storage.get_completions()
         target_completion = next((c for c in completions if c.id == completion_id), None)
@@ -1402,6 +1441,7 @@ class ChoresMixin:
 
         self.storage.remove_completion(completion_id)
         if target_completion:
+            self._restore_rejected_checklist(target_completion, unchecked_item_id=_checklist_item_id)
             await self._async_sync_routine_awards(target_completion)
         if target_completion and target_completion.approved and not target_completion.bonus_subtask_id:
             # Same as undo: a rejected completion must not leave the quest

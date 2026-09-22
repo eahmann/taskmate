@@ -89,7 +89,7 @@ class _Services:
     def __init__(self):
         self.handlers = {}
 
-    def async_register(self, domain, name, handler, schema=None):
+    def async_register(self, domain, name, handler, schema=None, **kwargs):
         self.handlers[name] = handler
 
 

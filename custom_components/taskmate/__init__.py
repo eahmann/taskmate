@@ -12,7 +12,7 @@ import voluptuous as vol
 import yaml
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse, callback
 from homeassistant.exceptions import ServiceValidationError, Unauthorized
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service import async_set_service_schema
@@ -102,6 +102,7 @@ from .const import (
     SERVICE_REMOVE_POINTS,
     SERVICE_REMOVE_TASK_GROUP,
     SERVICE_REQUEST_SWAP,
+    SERVICE_SET_CHECKLIST_ITEM,
     SERVICE_SET_CHORE_MANUAL_START,
     SERVICE_SET_CHORE_ORDER,
     SERVICE_SKIP_CHORE,
@@ -419,9 +420,9 @@ def _safe(handler):
     """
 
     @wraps(handler)
-    async def wrapped(call: ServiceCall) -> None:
+    async def wrapped(call: ServiceCall) -> ServiceResponse:
         try:
-            await handler(call)
+            return await handler(call)
         except ValueError as err:
             raise ServiceValidationError(str(err)) from err
 
@@ -491,9 +492,10 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         """
 
         @wraps(handler)
-        async def wrapped(call: ServiceCall) -> None:
-            await handler(call)
+        async def wrapped(call: ServiceCall) -> ServiceResponse:
+            response = await handler(call)
             await _async_record_service_audit(hass, call)
+            return response
 
         return _safe(wrapped)
 
@@ -544,6 +546,22 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             # no-ops inside the coordinator. Surface real errors as a clean
             # validation error rather than an unhandled 500 + traceback.
             raise ServiceValidationError(str(err)) from err
+
+    async def handle_set_checklist_item(call: ServiceCall) -> ServiceResponse:
+        """Save a child's checklist step and submit the whole chore when ready."""
+        coordinator = _get_coordinator(hass)
+        if not coordinator:
+            return
+        child_id = call.data[ATTR_CHILD_ID]
+        await _async_require_linked_child(hass, call, coordinator, child_id)
+        return await coordinator.async_set_checklist_item(
+            call.data[ATTR_CHORE_ID],
+            child_id,
+            call.data["item_id"],
+            call.data["checked"],
+            photo_url=call.data.get("photo_url", ""),
+            occurrence_id=call.data["occurrence_id"],
+        )
 
     async def handle_complete_bonus_subtask(call: ServiceCall) -> None:
         """Handle the complete_bonus_subtask service call."""
@@ -1160,6 +1178,23 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
     hass.services.async_register(
         DOMAIN,
+        SERVICE_SET_CHECKLIST_ITEM,
+        _audited(handle_set_checklist_item),
+        supports_response=SupportsResponse.OPTIONAL,
+        schema=vol.Schema(
+            {
+                vol.Required(ATTR_CHORE_ID): cv.string,
+                vol.Required(ATTR_CHILD_ID): cv.string,
+                vol.Required("item_id"): vol.All(cv.string, vol.Length(min=1, max=64)),
+                vol.Required("checked"): cv.boolean,
+                vol.Required("occurrence_id"): vol.All(cv.string, vol.Length(min=1, max=200)),
+                vol.Optional("photo_url"): cv.string,
+            }
+        ),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
         SERVICE_COMPLETE_BONUS_SUBTASK,
         _audited(handle_complete_bonus_subtask),
         schema=vol.Schema(
@@ -1716,6 +1751,7 @@ def _async_unregister_services(hass: HomeAssistant) -> None:
     """Unregister TaskMate services."""
     services = [
         SERVICE_COMPLETE_CHORE,
+        SERVICE_SET_CHECKLIST_ITEM,
         SERVICE_COMPLETE_BONUS_SUBTASK,
         SERVICE_APPROVE_CHORE,
         SERVICE_APPROVE_ALL_CHORES,

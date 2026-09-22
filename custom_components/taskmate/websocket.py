@@ -58,6 +58,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 
 from . import images, photos
+from .checklist import normalize_checklist_items, validate_checklist_chore
 from .const import (
     ASSIGNMENT_MODES,
     DEFAULT_NOTIFICATION_GROUP,
@@ -71,7 +72,7 @@ from .const import (
     is_valid_completion_sound,
 )
 from .coordinator import TaskMateCoordinator
-from .models import BonusSubTask, Reward
+from .models import BonusSubTask, Chore, Reward
 from .sounds import MAX_NAME_LEN as MAX_SOUND_NAME_LEN
 
 _LOGGER = logging.getLogger(__name__)
@@ -626,6 +627,7 @@ _CHORE_EDITABLE_FIELDS = {
     "publish_calendar_entities",
     "bonus_subtasks",
     "task_type",
+    "checklist_items",
     "timed_rate_points",
     "timed_rate_minutes",
     "timed_max_daily_minutes",
@@ -687,7 +689,16 @@ def _chore_payload_schema(*, require_name: bool):
                 vol.Optional("id"): str,
             }
         ],
-        vol.Optional("task_type"): vol.In(["standard", "timed"]),
+        vol.Optional("task_type"): vol.In(["standard", "timed", "checklist"]),
+        vol.Optional("checklist_items"): vol.All(
+            [
+                {
+                    vol.Required("name"): vol.All(str, vol.Length(min=1, max=200)),
+                    vol.Optional("id"): vol.All(str, vol.Length(min=1, max=64)),
+                }
+            ],
+            vol.Length(max=30),
+        ),
         vol.Optional("timed_rate_points"): vol.All(int, vol.Range(min=1)),
         vol.Optional("timed_rate_minutes"): vol.All(int, vol.Range(min=1)),
         vol.Optional("timed_max_daily_minutes"): vol.All(int, vol.Range(min=0)),
@@ -719,6 +730,9 @@ async def _maybe_apply_manual_start(coordinator, chore_id: str, child_id: str | 
 @websocket_api.async_response
 @_admin_only
 async def _ws_add_chore(hass, connection, msg, coordinator):
+    # Validate the complete proposed checklist before creating any stored chore.
+    proposed = Chore.from_dict(msg)
+    validate_checklist_chore(proposed)
     chore = await coordinator.async_add_chore(
         name=msg["name"].strip(),
         points=msg.get("points", 10),
@@ -730,6 +744,9 @@ async def _ws_add_chore(hass, connection, msg, coordinator):
         daily_limit=msg.get("daily_limit", 1),
         completion_sound=msg.get("completion_sound", "coin"),
         schedule_mode=msg.get("schedule_mode", "specific_days"),
+        task_type=proposed.task_type,
+        checklist_items=proposed.checklist_items,
+        open_ended=proposed.open_ended,
     )
     extra_fields = (set(msg.keys()) & _CHORE_EDITABLE_FIELDS) - {
         "name",
@@ -742,6 +759,9 @@ async def _ws_add_chore(hass, connection, msg, coordinator):
         "daily_limit",
         "completion_sound",
         "schedule_mode",
+        "task_type",
+        "checklist_items",
+        "open_ended",
     }
     if extra_fields:
         for f in extra_fields:
@@ -769,6 +789,8 @@ async def _ws_update_chore(hass, connection, msg, coordinator):
     if not existing:
         connection.send_error(msg["id"], "not_found", f"Chore {msg['chore_id']} not found")
         return
+    # Work on a detached copy so a rejected edit never mutates live storage.
+    existing = Chore.from_dict(existing.to_dict())
     for field in _CHORE_EDITABLE_FIELDS:
         if field in msg:
             value = msg[field]
@@ -2250,7 +2272,8 @@ async def _ws_templates_get(hass, connection, msg, coordinator):
                 vol.Optional("visibility_entity"): str,
                 vol.Optional("visibility_state"): str,
                 vol.Optional("visibility_operator"): str,
-                vol.Optional("task_type"): vol.In(["standard", "timed"]),
+                vol.Optional("task_type"): vol.In(["standard", "timed", "checklist"]),
+                vol.Optional("checklist_items"): normalize_checklist_items,
                 vol.Optional("timed_rate_points"): vol.All(int, vol.Range(min=1)),
                 vol.Optional("timed_rate_minutes"): vol.All(int, vol.Range(min=1)),
                 vol.Optional("timed_max_daily_minutes"): vol.All(int, vol.Range(min=0)),

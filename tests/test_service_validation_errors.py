@@ -27,7 +27,7 @@ async def _registered_schemas() -> dict:
     schemas: dict = {}
 
     class _Services:
-        def async_register(self, domain, name, handler, schema=None):
+        def async_register(self, domain, name, handler, schema=None, **kwargs):
             schemas[name] = schema
 
     await tm._async_register_services(SimpleNamespace(services=_Services()))

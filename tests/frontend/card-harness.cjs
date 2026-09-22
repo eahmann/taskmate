@@ -59,12 +59,14 @@ function harness(kind, options = {}) {
     __taskmate_is_parent: () => options.parent === true,
   };
   const timeouts = [];
+  const clearedTimeouts = new Set();
   const context = {
     window, console: { info() {}, error() {} }, queueMicrotask() {},
     customElements: { get: name => elements.get(name), define: (name, element) => elements.set(name, element) },
     document: { querySelectorAll: () => [] },
     CustomEvent: class { constructor(type, init) { this.type = type; Object.assign(this, init); } },
-    URLSearchParams, Date: ClockDate, Intl, setTimeout: (fn, delay) => timeouts.push({ fn, delay }), clearTimeout() {},
+    URLSearchParams, Date: ClockDate, Intl, setTimeout: (fn, delay) => timeouts.push({ fn, delay }),
+    clearTimeout: id => clearedTimeouts.add(id),
   };
   vm.runInNewContext(readFileSync(path.join(www, 'taskmate-attr-resolver.js'), 'utf8'), context);
   if (kind === 'bonuses' || kind === 'penalties') {
@@ -97,7 +99,7 @@ function harness(kind, options = {}) {
     config: { time_zone: options.timeZone || 'UTC' }, states: { 'sensor.taskmate_overview': { attributes: attrs } },
     async callService(domain, service, data) { calls.push({ domain, service, data }); },
   };
-  return { card, attrs, child, chore, calls, timeouts, window,
+  return { card, attrs, child, chore, calls, timeouts, clearedTimeouts, window,
     setNow: value => { now = new Date(value).getTime(); }, touch: () => { card.hass = { ...card.hass, states: { ...card.hass.states } }; }, view: () => rendered(card.render()) };
 }
 

@@ -1095,12 +1095,12 @@ class TaskMateParentDashboardCard extends LitElement {
                         <span class="tm-outstanding-pts">
                           <ha-icon icon="${pointsIcon}" style="--mdc-icon-size:14px;"></ha-icon>${c.points}
                         </span>
-                        <button class="btn-complete-behalf" ?disabled="${loading}"
+                        ${c.task_type === "checklist" ? html`<span class="tm-outstanding-name">${this._t('common.checklist_use_child_card')}</span>` : html`<button class="btn-complete-behalf" ?disabled="${loading}"
                           title="${this._t('common.complete_on_behalf_tooltip', { name: child.name })}"
                           @click="${() => this._handleCompleteOnBehalf(c.id, child.id)}">
                           <ha-icon icon="mdi:check" style="--mdc-icon-size:16px;"></ha-icon>
                           ${this._t('common.complete_on_behalf')}
-                        </button>
+                        </button>`}
                       </div>
                     `;
                   })}

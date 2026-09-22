@@ -6,6 +6,21 @@
 
 This fork adds [daily Routines built from ordinary chores](ROUTINES.md).
 
+**Checklist chores** break one chore into required, unscored items. Choose
+**Task type → Checklist** when adding or editing a chore, set the chore's points,
+then add its items. For example, **Get dressed — 2 stars** could contain
+**Put daytime clothes on** and **Put pajamas away**. Items can be checked in any
+order; checking the final item automatically submits the whole chore. Parent
+approval and photo proof still apply when enabled. There is no separate Claim
+button and partial progress earns no points.
+
+Each child has their own saved progress, shared across their dashboards and
+devices. A new occurrence starts with unchecked items. Children can uncheck
+items before submission; afterward, the global chore undo rules below apply,
+preserving the other checked items. Checklist chores can also be members of
+Routines. Open-ended chores cannot use a checklist because a checklist has a
+fixed whole-chore award. Each checklist supports 1–30 items.
+
 It also adds a global **Chore undo window (seconds)** in **TaskMate → Settings**.
 The default is 10 seconds; choose 0–3600 seconds for all children and dashboards.
 Automatically approved chores can be undone during that window. Pending child

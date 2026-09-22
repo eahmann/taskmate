@@ -350,7 +350,8 @@ class Chore:
     # Bonus sub-tasks: optional extra-credit tasks that unlock after the parent chore is completed
     bonus_subtasks: list[BonusSubTask] = field(default_factory=list)
     # Timed task fields
-    task_type: str = "standard"  # "standard" | "timed"
+    task_type: str = "standard"  # "standard" | "timed" | "checklist"
+    checklist_items: list[dict[str, str]] = field(default_factory=list)
     timed_rate_points: int = 10  # points awarded per rate window
     timed_rate_minutes: int = 5  # rate window size in minutes
     timed_max_daily_minutes: int = 0  # 0 = unlimited; caps total daily duration
@@ -425,6 +426,7 @@ class Chore:
             ),
             bonus_subtasks=[BonusSubTask.from_dict(b) for b in data.get("bonus_subtasks", [])],
             task_type=data.get("task_type", "standard"),
+            checklist_items=[dict(item) for item in data.get("checklist_items", [])],
             timed_rate_points=data.get("timed_rate_points", 10),
             timed_rate_minutes=max(1, int(data.get("timed_rate_minutes", 5) or 5)),
             timed_max_daily_minutes=max(0, int(data.get("timed_max_daily_minutes", 0) or 0)),
@@ -486,6 +488,7 @@ class Chore:
             "publish_calendar_published_dates": self.publish_calendar_published_dates,
             "bonus_subtasks": [b.to_dict() for b in self.bonus_subtasks],
             "task_type": self.task_type,
+            "checklist_items": [dict(item) for item in self.checklist_items],
             "timed_rate_points": self.timed_rate_points,
             "timed_rate_minutes": self.timed_rate_minutes,
             "timed_max_daily_minutes": self.timed_max_daily_minutes,
@@ -726,6 +729,9 @@ class ChoreCompletion:
     submitted_points: int | None = None
     # Set only by child submission paths; permanently cleared on parent review.
     child_undo_allowed: bool = False
+    checklist_occurrence_id: str = ""
+    checklist_items: list[dict[str, str]] = field(default_factory=list)
+    checklist_final_item_id: str = ""
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ChoreCompletion:
@@ -758,6 +764,9 @@ class ChoreCompletion:
             id=data.get("id") or generate_id(),
             submitted_points=submitted_points,
             child_undo_allowed=data.get("child_undo_allowed") is True,
+            checklist_occurrence_id=data.get("checklist_occurrence_id", ""),
+            checklist_items=[dict(item) for item in data.get("checklist_items", [])],
+            checklist_final_item_id=data.get("checklist_final_item_id", ""),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -777,6 +786,9 @@ class ChoreCompletion:
             "id": self.id,
             "submitted_points": self.submitted_points,
             "child_undo_allowed": self.child_undo_allowed,
+            "checklist_occurrence_id": self.checklist_occurrence_id,
+            "checklist_items": [dict(item) for item in self.checklist_items],
+            "checklist_final_item_id": self.checklist_final_item_id,
         }
 
 

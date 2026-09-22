@@ -1847,5 +1847,19 @@
   "panel.settings_chore_undo_label": "Délai pour annuler une tâche (secondes)",
   "panel.settings_chore_undo_hint": "Pour tous les enfants et tableaux de bord. Les tâches approuvées automatiquement peuvent être annulées pendant 0 à 3600 secondes après leur réalisation ; 0 désactive ce délai. Les demandes en attente peuvent être retirées avant leur approbation par un parent.",
   "child.undo_recent": "Annuler les tâches récentes",
-  "child.undo_named": "Annuler {name}"
+  "child.undo_named": "Annuler {name}",
+  "panel.chore_task_type_checklist": "Liste à cocher — points fixes quand tous les éléments sont cochés",
+  "panel.chore_checklist_label": "Éléments de la liste",
+  "panel.chore_checklist_hint": "Tous les éléments sont obligatoires et peuvent être cochés dans n’importe quel ordre. Ils ne rapportent aucun point individuellement. Cocher le dernier élément soumet automatiquement la tâche pour sa récompense complète, avec validation parentale ou photo si nécessaire.",
+  "panel.chore_checklist_item_label": "Élément {number}",
+  "panel.chore_checklist_item_placeholder": "p. ex. Ranger son pyjama",
+  "panel.chore_checklist_add": "Ajouter un élément",
+  "panel.chore_checklist_invalid": "Ajoutez 1 à 30 éléments. Donnez à chacun un nom de 1 à 200 caractères.",
+  "panel.chore_checklist_open_ended_hint": "Les listes à cocher ont une récompense fixe ; la réalisation ouverte n’est donc pas disponible.",
+  "child.checklist_progress": "{done} éléments cochés sur {total}",
+  "child.checklist_hint": "Coche tous les éléments pour terminer cette tâche.",
+  "child.checklist_complete": "Liste terminée",
+  "child.checklist_error": "Impossible de mettre à jour la liste : {message}",
+  "child.checklist_photo": "Coche le dernier élément et ajoute une photo pour terminer.",
+  "common.checklist_use_child_card": "Complète la liste sur le tableau de bord de l’enfant"
 }

@@ -196,6 +196,7 @@ def _build_children_summary(coordinator: TaskMateCoordinator, common: dict) -> l
                 "total_penalties_received": getattr(c, "total_penalties_received", 0) or 0,
                 "quests": coordinator.quest_progress_for_child(c.id),
                 "routines": coordinator.routine_progress_for_child(c.id),
+                "checklist_progress": coordinator.checklist_progress_for_child(c.id),
                 "avatar_options": coordinator.avatar_options_for_child(c),
                 "challenges": coordinator.challenge_progress_for_child(c.id),
             }
@@ -328,6 +329,9 @@ def _build_chores_list(coordinator: TaskMateCoordinator, common: dict) -> list[d
         if completion_sound and completion_sound != "coin":
             record["completion_sound"] = completion_sound
         task_type = getattr(c, "task_type", "standard")
+        if task_type == "checklist":
+            record["task_type"] = "checklist"
+            record["checklist_items"] = [dict(item) for item in c.checklist_items]
         if task_type == "timed":
             record["task_type"] = "timed"
             record["timed_rate_points"] = getattr(c, "timed_rate_points", 10)
@@ -413,6 +417,9 @@ def _build_todays_completions(common: dict) -> list[dict]:
         }
         if timed_secs > 0:
             rec["timed_duration_seconds"] = timed_secs
+        if comp.checklist_occurrence_id:
+            rec["checklist_occurrence_id"] = comp.checklist_occurrence_id
+            rec["checklist_items"] = [{**item, "checked": True} for item in comp.checklist_items]
         # Emit the bare (unsigned) photo path. A card's <img> carries no bearer
         # token, so the card signs each path per-viewer via auth/sign_path before
         # rendering — this keeps a self-authenticating URL out of this
@@ -1402,6 +1409,9 @@ class PendingApprovalsSensor(TaskMateBaseSensor):
                 }
                 if timed_secs > 0:
                     detail["timed_duration_seconds"] = timed_secs
+                if comp.checklist_occurrence_id:
+                    detail["checklist_occurrence_id"] = comp.checklist_occurrence_id
+                    detail["checklist_items"] = [{**item, "checked": True} for item in comp.checklist_items]
                 # Bare (unsigned) path; the card signs per-viewer via
                 # auth/sign_path so no self-authenticating URL lands in this
                 # world-readable attribute.

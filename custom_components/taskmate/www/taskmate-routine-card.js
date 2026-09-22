@@ -39,6 +39,7 @@ class TaskMateRoutineCard extends LitElement {
       _index: { type: Number },
       _finished: { type: Boolean },
       _busy: { type: Boolean },
+      _checklistCelebration: { type: Object },
     };
   }
 
@@ -95,6 +96,7 @@ class TaskMateRoutineCard extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     clearTimeout(this._undoExpiryTimer);
+    clearTimeout(this._checklistCelebrationTimer);
   }
 
   _renderUndoActions() {
@@ -111,6 +113,8 @@ class TaskMateRoutineCard extends LitElement {
       await this.hass.callService('taskmate', 'undo_chore', {
         completion_id: completion.completion_id || completion.id,
       });
+      this._checklistSnapshots?.delete(`${this.config.child_id}:${id}`);
+      this._checklistCelebration = null;
       if (!completion.bonus_subtask_id) {
         this._runCompleted.delete(id);
         this._skipped.delete(id);
@@ -206,6 +210,7 @@ class TaskMateRoutineCard extends LitElement {
   }
 
   async _complete(chore) {
+    if (chore.task_type === 'checklist') return;
     if (this._busy) return;
     const child = this._child();
     if (!child) return;
@@ -252,7 +257,117 @@ class TaskMateRoutineCard extends LitElement {
     this.requestUpdate();
   }
 
+  _renderChecklist(chore) {
+    const child = this._child();
+    const progress = window.__taskmate_checklist.progress(this, child, chore);
+    const unavailable = !progress.completion_id && this._attrs().chore_availability?.[chore.id]?.[child.id] === false;
+    return html`${window.__taskmate_checklist.render(html, this, progress, this._busy || unavailable,
+      (item, checked) => this._setChecklistItem(chore, item, checked))}
+      ${chore.require_photo && !progress.completion_id ? html`<div class="note">📷 ${this._t('child.checklist_photo')}</div>` : ''}
+      <input id="tm-checklist-photo" type="file" accept="image/*" capture="environment" style="display:none"
+        @change=${event => this._checklistPhotoSelected(event)}>`;
+  }
+
+  async _setChecklistItem(chore, item, checked, photoUrl = null, occurrenceId = null) {
+    if (this._busy) return;
+    const child = this._child();
+    const progress = window.__taskmate_checklist.progress(this, child, chore);
+    if (!progress.occurrence_id || (occurrenceId && occurrenceId !== progress.occurrence_id)) return;
+    const current = progress.items.find(i => i.id === item.id);
+    if (!current || current.checked === checked) return;
+    if (progress.completion_id && !window.__taskmate_chore_undo.canUndo(progress)) return;
+    if (checked && chore.require_photo && !photoUrl && progress.items.every(i => i.id === item.id || i.checked)) {
+      this._checklistPhoto = { chore, item, childId: child.id, occurrenceId: progress.occurrence_id };
+      const input = this.renderRoot?.querySelector('#tm-checklist-photo');
+      if (input) { input.value = ''; input.click(); }
+      return;
+    }
+    const source = child.checklist_progress?.[chore.id];
+    this._busy = true;
+    this.requestUpdate();
+    try {
+      const result = await this.hass.callService('taskmate', 'set_checklist_item', {
+        chore_id: chore.id, child_id: child.id, item_id: item.id, checked,
+        occurrence_id: progress.occurrence_id, ...(photoUrl ? { photo_url: photoUrl } : {}),
+      }, undefined, false, true);
+      const response = result?.response;
+      window.__taskmate_checklist.remember(this, child, chore, source, response?.progress);
+      const id = String(chore.id);
+      if (response?.completed) {
+        this._runCompleted.set(id, { points: this._pointsFor(chore), pending: !response.approved });
+        this._skipped.delete(id);
+        this._checklistCelebration = chore.name;
+        clearTimeout(this._checklistCelebrationTimer);
+        this._checklistCelebrationTimer = setTimeout(() => { this._checklistCelebration = null; this.requestUpdate(); }, 2500);
+        this._advance();
+      } else if (!checked) {
+        this._runCompleted.delete(id);
+        this._checklistCelebration = null;
+        this._finished = false;
+      }
+    } catch (error) {
+      this.dispatchEvent(new CustomEvent('hass-notification', {
+        detail: { message: this._t('child.checklist_error', { message: error?.message || '' }) }, bubbles: true, composed: true,
+      }));
+    } finally {
+      this._busy = false;
+      this.requestUpdate();
+    }
+  }
+
+  async _checklistPhotoSelected(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    const pending = this._checklistPhoto;
+    this._checklistPhoto = null;
+    if (!file || !pending || this._busy || this._child()?.id !== pending.childId) return;
+    this._busy = true;
+    this.requestUpdate();
+    try {
+      if (!file.type.startsWith('image/')) throw new Error(this._t('child.photo_not_image'));
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, 1280 / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', .8));
+      if (!blob) throw new Error(this._t('child.photo_process_failed'));
+      const upload = async () => {
+        const data = new FormData();
+        data.append('file', blob, 'evidence.jpg');
+        const token = this.hass.auth?.data?.access_token;
+        return fetch('/api/taskmate/photo', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: data });
+      };
+      if (this.hass.auth?.expired) await this.hass.auth.refreshAccessToken();
+      let result = await upload();
+      if (result.status === 401 && this.hass.auth?.refreshAccessToken) {
+        await this.hass.auth.refreshAccessToken();
+        result = await upload();
+      }
+      if (!result.ok) throw new Error(this._t('child.photo_upload_failed'));
+      const { photo_url: photoUrl } = await result.json();
+      if (!photoUrl) throw new Error(this._t('child.photo_upload_failed'));
+      this._busy = false;
+      if (this._child()?.id !== pending.childId) return;
+      await this._setChecklistItem(pending.chore, pending.item, true, photoUrl, pending.occurrenceId);
+    } catch (error) {
+      this.dispatchEvent(new CustomEvent('hass-notification', {
+        detail: { message: String(error?.message || error) }, bubbles: true, composed: true,
+      }));
+    } finally {
+      this._busy = false;
+      this.requestUpdate();
+    }
+  }
+
+  _renderChecklistCelebration() {
+    return this._checklistCelebration ? html`<div class="checklist-celebration" role="status">🎉 ${this._t('child.celebration_title')} ${this._checklistCelebration}</div>` : '';
+  }
+
   _skip() {
+    if (this._busy) return;
     const tasks = this._tasks();
     const chore = tasks[this._index];
     if (chore) this._skipped.add(String(chore.id));
@@ -260,12 +375,14 @@ class TaskMateRoutineCard extends LitElement {
   }
 
   _back() {
+    if (this._busy) return;
     if (this._finished) { this._finished = false; return; }
     if (this._index > 0) this._index = this._index - 1;
     this.requestUpdate();
   }
 
   _restart() {
+    if (this._busy) return;
     this._index = 0;
     this._finished = false;
     this._runCompleted = new Map();
@@ -303,6 +420,7 @@ class TaskMateRoutineCard extends LitElement {
         </div>
 
         ${this._renderUndoActions()}
+        ${this._renderChecklistCelebration()}
 
         <div class="progress">
           <div class="rt-bar"><i style="width:${pct}%"></i></div>
@@ -328,11 +446,12 @@ class TaskMateRoutineCard extends LitElement {
             <ha-icon icon="${pointsIcon}"></ha-icon> +${this._pointsFor(chore)}
           </div>
           ${done?.pending ? html`<div class="pending">${this._t("routine.waiting_for_parent")}</div>` : ""}
-          ${chore.require_photo ? html`<div class="note">${this._t("routine.photo_note")}</div>` : ""}
+          ${chore.task_type === 'checklist' ? this._renderChecklist(chore)
+            : chore.require_photo ? html`<div class="note">${this._t("routine.photo_note")}</div>` : ""}
         </div>
 
         <div class="foot">
-          ${done
+          ${chore.task_type === 'checklist' ? '' : done
             ? html`<button class="rt-btn rt-done is-done" disabled>
                      ${done.pending ? this._t("routine.sent_for_checking") : this._t("routine.completed")}
                    </button>`
@@ -341,10 +460,10 @@ class TaskMateRoutineCard extends LitElement {
                      ${this._t("routine.done")}
                    </button>`}
           <div class="rt-row">
-            <button class="rt-btn rt-back" ?disabled=${index === 0} @click=${this._back}>
+            <button class="rt-btn rt-back" ?disabled=${this._busy || index === 0} @click=${this._back}>
               ${this._t("routine.back")}
             </button>
-            <button class="rt-btn rt-skip" @click=${this._skip}>
+            <button class="rt-btn rt-skip" ?disabled=${this._busy} @click=${this._skip}>
               ${done ? this._t("routine.next") : this._t("routine.skip")}
             </button>
           </div>
@@ -358,6 +477,7 @@ class TaskMateRoutineCard extends LitElement {
       <ha-card>
         <div class="head"><span class="who">${title}</span></div>
         ${this._renderUndoActions()}
+        ${this._renderChecklistCelebration()}
         <div class="empty">
           <ha-icon icon="mdi:check-circle-outline"></ha-icon>
           <h2>${this._t("routine.empty_title")}</h2>
@@ -379,6 +499,7 @@ class TaskMateRoutineCard extends LitElement {
       <ha-card>
         <div class="head"><span class="who">${title}</span></div>
         ${this._renderUndoActions()}
+        ${this._renderChecklistCelebration()}
         <div class="progress">
           <div class="rt-bar"><i class="full" style="width:100%"></i></div>
           <div class="count">${this._t("routine.all_done_count", { total: tasks.length })}</div>
@@ -398,7 +519,7 @@ class TaskMateRoutineCard extends LitElement {
           ` : ""}
         </div>
         <div class="foot">
-          <button class="rt-btn rt-done" @click=${this._restart}>${this._t("routine.start_again")}</button>
+          <button class="rt-btn rt-done" ?disabled=${this._busy} @click=${this._restart}>${this._t("routine.start_again")}</button>
         </div>
       </ha-card>
     `;
@@ -530,6 +651,11 @@ class TaskMateRoutineCard extends LitElement {
         font-weight: 700; font-size: 12.5px;
       }
       .note { font-size: 12.5px; color: var(--tmd-dim, var(--secondary-text-color)); }
+      .checklist-celebration { padding:16px; text-align:center; font-weight:800;
+        background:color-mix(in srgb,var(--tmd-good,#16a34a) 18%,transparent);
+        animation:checklist-pop .3s ease-out; }
+      @keyframes checklist-pop { from { transform:scale(.94); opacity:.5; } to { transform:scale(1); opacity:1; } }
+      @media (prefers-reduced-motion:reduce) { .checklist-celebration { animation:none; } }
 
       .foot { padding: 14px 20px 20px; display: flex; flex-direction: column; gap: 10px; }
       .rt-btn {

@@ -88,6 +88,7 @@ PLATFORMS: Final = ["sensor", "button", "binary_sensor"]
 
 # Services
 SERVICE_COMPLETE_CHORE: Final = "complete_chore"
+SERVICE_SET_CHECKLIST_ITEM: Final = "set_checklist_item"
 SERVICE_APPROVE_CHORE: Final = "approve_chore"
 SERVICE_APPROVE_ALL_CHORES: Final = "approve_all_chores"
 SERVICE_REJECT_CHORE: Final = "reject_chore"

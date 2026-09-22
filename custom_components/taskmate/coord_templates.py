@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from .checklist import validate_checklist_chore
 from .models import Chore, generate_id, optional_float
 from .templates import BUILT_IN_IDS, BUILT_IN_TEMPLATES, TEMPLATE_CHORE_FIELDS
 
@@ -59,6 +60,7 @@ class TemplatesMixin:
         if not chores:
             raise ValueError("Cannot apply template with no chores")
         created_ids = []
+        prepared = []
         for chore_def in chores:
             chore = Chore(
                 name=chore_def.get("name", "Unnamed"),
@@ -86,10 +88,14 @@ class TemplatesMixin:
                 weather_temp_max=optional_float(chore_def.get("weather_temp_max")),
                 weather_wind_max=optional_float(chore_def.get("weather_wind_max")),
                 task_type=chore_def.get("task_type", "standard"),
+                checklist_items=[{"name": item["name"]} for item in chore_def.get("checklist_items", [])],
                 timed_rate_points=chore_def.get("timed_rate_points", 10),
                 timed_rate_minutes=chore_def.get("timed_rate_minutes", 5),
                 timed_max_daily_minutes=chore_def.get("timed_max_daily_minutes", 0),
             )
+            validate_checklist_chore(chore)
+            prepared.append(chore)
+        for chore in prepared:
             self.storage.add_chore(chore)
             created_ids.append(chore.id)
         await self.storage.async_save()
@@ -261,6 +267,10 @@ class TemplatesMixin:
                 for key in _OPTIONAL_NUMERIC_TEMPLATE_FIELDS:
                     if cleaned.get(key) is not None:
                         cleaned[key] = _pack_number(cleaned[key], None)
+                if cleaned.get("task_type") == "checklist" or "checklist_items" in cleaned:
+                    proposed = Chore.from_dict(cleaned)
+                    validate_checklist_chore(proposed)
+                    cleaned["checklist_items"] = proposed.checklist_items
                 chores.append(cleaned)
 
             clean.append(
