@@ -1727,6 +1727,11 @@ class TaskMateChildCard extends LitElement {
          Ported from docs/design/redesigns/frag/03-child.html.
       ══════════════════════════════════════════════════════════════════ */
       .tmd-chores { display: grid; gap: 11px; }
+      /* Auto grid tracks use the rows' min-content width, which can push
+         completion buttons outside a narrow card (especially in routines). */
+      .tmd-chores, .tmd-checklist, .tmd-bd > .grid, .tm-routine > .grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
       .tmd-chore {
         display: flex; align-items: center; gap: 10px;
         background: var(--tmd-surface-2);
@@ -1793,6 +1798,14 @@ class TaskMateChildCard extends LitElement {
         background: transparent; border-color: transparent; color: var(--tmd-good);
       }
 
+      .tmd-chore, .tmd-quest, .tmd-check { min-width: 0; }
+      .tmd-chore .ch-name, .tmd-quest .q-name, .tmd-check .c-name {
+        white-space: normal; overflow-wrap: anywhere;
+      }
+      .tmd-chore > button, .tmd-quest > button, .tmd-check > button {
+        flex-shrink: 0; min-height: 44px;
+      }
+
       /* Designed: shared chore meta (mandatory / photo / description / dim states) */
       .tmd-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 3px; }
       .tmd-tag {
@@ -1804,7 +1817,7 @@ class TaskMateChildCard extends LitElement {
       }
       .tmd-tag.mandatory { background: color-mix(in srgb, var(--tmd-bad) 16%, transparent); color: var(--tmd-bad); border-color: transparent; }
       .tmd-tag.photo { background: color-mix(in srgb, var(--tmd-accent) 14%, transparent); color: var(--tmd-accent); border-color: transparent; }
-      .tmd-desc { font-size: 11.5px; color: var(--tmd-dim); margin-top: 3px; white-space: normal; line-height: 1.3; }
+      .tmd-desc { font-size: 11.5px; color: var(--tmd-dim); margin-top: 3px; white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
       .tmd-chore.mandatory, .tmd-quest.mandatory, .tmd-check.mandatory {
         box-shadow: inset 3px 0 0 0 var(--tmd-bad);
         padding-left: 20px;
