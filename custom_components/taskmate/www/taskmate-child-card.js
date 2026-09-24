@@ -1752,6 +1752,7 @@ class TaskMateChildCard extends LitElement {
       .tm-routine-progress::-moz-progress-bar { background: var(--tm-page-accent); }
       .tm-app .tmd-chores { gap: 0 32px; align-items: start; }
       .tm-app .tmd-chore { box-sizing: border-box; min-width: 0; min-height: 104px; border-radius: 0; background: transparent;
+        display: grid; grid-template-columns: 28px minmax(0, 1fr) auto;
         padding: 16px 0; gap: 12px; border-bottom: 1px solid var(--divider-color, #8884); }
       .tm-app .tmd-chore .num-badge { display: none; }
       .tm-app .tmd-chore .ch-emoji { font-size: 28px; }
@@ -1764,10 +1765,9 @@ class TaskMateChildCard extends LitElement {
       .tm-app .tmd-chore.done { opacity: 1; }
       .tm-app .tmd-chore.done .ch-name { color: var(--secondary-text-color); }
       .tm-app .tmd-chore .done-chip { font-size: 14px; white-space: normal; text-align: center; max-width: 110px; }
-      .tm-app details { color: var(--secondary-text-color); font-size: 14px; line-height: 1.5; }
-      .tm-app summary { cursor: pointer; min-height: 44px; width: fit-content; align-content: center; }
-      .tm-app details p { margin: 0 0 12px; max-width: 65ch; }
-      .tm-app summary:focus-visible, .tm-app button:focus-visible { outline: 3px solid var(--primary-color); outline-offset: 3px; }
+      .tm-app .tmd-desc, .tm-app .tm-routine > p { color: var(--secondary-text-color); font-size: 14px; line-height: 1.5; }
+      .tm-app .tmd-chore > .tmd-desc { grid-column: 1 / -1; margin: 0; max-width: 65ch; }
+      .tm-app button:focus-visible { outline: 3px solid var(--primary-color); outline-offset: 3px; }
       @container routine (min-width: 700px) {
         .tm-app .tm-routine > .tmd-chores { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       }
@@ -1776,11 +1776,11 @@ class TaskMateChildCard extends LitElement {
         .tm-app .tm-routine:only-of-type { grid-column: 1 / -1; }
         .tm-app .tmd-bd > :not(.tm-routine) { grid-column: 1 / -1; }
         .tm-app .tmd-bd > .tmd-chores { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .tm-app .tmd-chore { min-height: 148px; gap: 20px; padding: 24px 0; }
+        .tm-app .tmd-chore { min-height: 148px; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 20px; padding: 24px 0; }
         .tm-app .tmd-chore .ch-name { font-size: 24px; }
         .tm-app .tmd-chore > .btn, .tm-app .tmd-chore > .tmd-undochip { min-width: 94px; min-height: 60px; font-size: 20px; }
         .tm-app .tmd-chore .ch-emoji ha-icon { --mdc-icon-size: 38px; }
-        .tm-app details { font-size: 16px; }
+        .tm-app .tmd-desc, .tm-app .tm-routine > p { font-size: 16px; }
       }
       .tmd-chores { display: grid; gap: 11px; }
       /* Auto grid tracks use the rows' min-content width, which can push
@@ -2609,9 +2609,7 @@ class TaskMateChildCard extends LitElement {
         ${this.config.app_layout ? html`<progress class="tm-routine-progress"
           aria-label=${routine.name} max=${Math.max(1, routine.required_count || 0)}
           value=${Math.min(routine.completed_count || 0, routine.required_count || 0)}></progress>` : ''}
-        ${routine.description ? this.config.app_layout
-          ? html`<details class="tm-routine-details"><summary>${this._t('child_page.details')}</summary><p>${routine.description}</p></details>`
-          : html`<p>${routine.description}</p>` : ''}
+        ${routine.description ? html`<p>${routine.description}</p>` : ''}
         ${routine.pending_count ? html`<p role="status">${this._t('routine.pending', { count: routine.pending_count })}</p>` : ''}
         ${routine.done ? html`<p role="status">${this._t('routine.complete_status')}</p>` : ''}
         ${optional.length ? html`<p style="font-size:.85em">${this._t('routine.optional', { names: optional.join(', ') })}</p>` : ''}
@@ -2654,8 +2652,8 @@ class TaskMateChildCard extends LitElement {
   }
 
   /** Shared meta tags (mandatory / photo / description) for a designed chore row. */
-  _designChoreMeta(r) {
-    const showDesc = this.config.show_description === true && r.chore.description;
+  _designChoreMeta(r, includeDescription = true) {
+    const showDesc = includeDescription && this.config.show_description === true && r.chore.description;
     // A blocked chore says what unlocks it here too — the classic row carries
     // the same label, and a dimmed row with no reason is just confusing (#793).
     const depNames = r.blocked ? (r.chore._dependencyNames || []) : [];
@@ -2681,9 +2679,7 @@ class TaskMateChildCard extends LitElement {
           ${recLabel ? html`<span class="tmd-tag">🕒 ${recLabel}</span>` : ""}
           ${firstComeLabel ? html`<span class="tmd-tag">✅ ${firstComeLabel}</span>` : ""}
         </div>` : ""}
-      ${showDesc ? this.config.app_layout
-        ? html`<details class="tm-chore-details"><summary>${this._t('child_page.details')}</summary><p>${r.chore.description}</p></details>`
-        : html`<div class="tmd-desc">${r.chore.description}</div>` : ""}`;
+      ${showDesc ? html`<div class="tmd-desc">${r.chore.description}</div>` : ""}`;
   }
 
   _designHeader(child, tt, sub, tone, pillText) {
@@ -2737,11 +2733,13 @@ class TaskMateChildCard extends LitElement {
           <div class="ch-mid">
             <div class="ch-name">${r.chore.name}</div>
             ${r.done || (this.config.app_layout && r.points === 0) ? "" : html`<div class="chip soft" style="margin-top:3px">+${r.points} ⭐</div>`}
-            ${this._designChoreMeta(r)}
+            ${this._designChoreMeta(r, !this.config.app_layout)}
           </div>
           ${r.done
             ? this._designUndoChip(r, html`${this._t("child.done") || "Done"}! 🎉`)
             : this._designDoneBtn(r, r.photo ? `📷 ${this._t("child.done") || "DONE"}` : (this._t("child.done") || "DONE"), "good")}
+          ${this.config.app_layout && this.config.show_description === true && r.chore.description
+            ? html`<div class="tmd-desc">${r.chore.description}</div>` : ""}
         </div>
         ${this._designBonus(r)}`)}
     </div>`;

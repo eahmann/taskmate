@@ -90,7 +90,7 @@ test('app chore rows retain completion, celebration and child undo', async () =>
   const complete = card._handleComplete.bind(card);
   let completion;
   card._handleComplete = (...args) => { completion = complete(...args); return completion; };
-  assert.match(view().markup, /tm-chore-details/);
+  assert.doesNotMatch(view().markup, /<details/);
   assert.match(view().markup, /Put your pajamas on/);
   const done = view().buttons.find(b => b.content === 'Done');
   assert.ok(done);
@@ -114,7 +114,8 @@ test('app rewards retain affordability and pending-claim guards', () => {
   const { attrs, view, touch } = harness('rewards', { config: { app_layout: true, card_design: 'playroom' } });
   attrs.rewards = [{ id: 'music', name: 'Music', cost: 10, assigned_to: ['kid'], description: 'Choose a song.' }];
   attrs.reward_claims = [];
-  assert.match(view().markup, /<details>/);
+  assert.match(view().markup, /Choose a song/);
+  assert.doesNotMatch(view().markup, /<details/);
   assert.equal(view().buttons.find(b => b.content === 'Claim reward').disabled, true);
   attrs.children[0].points = 15;
   assert.equal(view().buttons.find(b => b.content === 'Claim reward').disabled, false);

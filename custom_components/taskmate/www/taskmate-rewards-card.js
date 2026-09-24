@@ -991,10 +991,8 @@ class TaskMateRewardsCard extends LitElement {
       .tm-app .rw-status { font-size: 14px; }
       .tm-app .btn { min-height: 48px; font: 750 16px var(--tmd-font-body); border-radius: 12px; padding: 12px 16px; }
       .tm-app .btn:disabled { opacity: .55; }
-      .tm-app details { color: var(--secondary-text-color); font-size: 14px; line-height: 1.5; }
-      .tm-app summary { cursor: pointer; min-height: 44px; width: fit-content; align-content: center; }
-      .tm-app details p { margin: 0; max-width: 65ch; }
-      .tm-app summary:focus-visible, .tm-app button:focus-visible { outline: 3px solid var(--primary-color); outline-offset: 3px; }
+      .tm-app .rw-desc { color: var(--secondary-text-color); font-size: 14px; line-height: 1.5; max-width: 65ch; }
+      .tm-app button:focus-visible { outline: 3px solid var(--primary-color); outline-offset: 3px; }
       @container reward-content (min-width: 800px) {
         .tm-app .rw-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .tm-app .rw-card { padding: 28px 0; }
@@ -1002,7 +1000,7 @@ class TaskMateRewardsCard extends LitElement {
       @container reward-content (min-width: 1500px) {
         .tm-app .rw-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         .tm-app .btn { min-height: 58px; font-size: 19px; }
-        .tm-app details, .tm-app .rw-status { font-size: 16px; }
+        .tm-app .rw-desc, .tm-app .rw-status { font-size: 16px; }
       }
       .rw-list { display: flex; flex-direction: column; gap: 11px; }
       /* #604: default is fluid — the list grows to fit every reward. Opt into a
@@ -2105,9 +2103,7 @@ class TaskMateRewardsCard extends LitElement {
           <div class="rw-info">
             ${d.isJackpot ? html`<span class="chip rw-jackpot-label">🎰 ${this._t('rewards.jackpot')}</span>` : ''}
             <div class="rw-name">${reward.name}</div>
-            ${reward.description ? this.config.app_layout
-              ? html`<details><summary>${this._t('child_page.details')}</summary><p>${reward.description}</p></details>`
-              : html`<div class="muted rw-desc">${reward.description}</div>` : ''}
+            ${reward.description ? html`<div class="muted rw-desc">${reward.description}</div>` : ''}
             ${avail ? html`<span class="chip soft rw-avail rw-avail-${avail.tone}">${avail.label}</span>` : ''}
             ${badges ? html`<div class="rw-badges">${badges}</div>` : ''}
           </div>

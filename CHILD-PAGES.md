@@ -2,7 +2,7 @@
 
 `custom:taskmate-child-page-card` provides an unboxed child header, spendable
 Stars, and linked **Chores / My rewards** views. Routine items use two columns
-when space allows; rewards use up to three. Descriptions expand under Details.
+when space allows; rewards use up to three. Instructions remain visible in each row.
 Existing completion, approval, celebration, undo, and reward actions are reused.
 Standalone TaskMate cards keep their current appearance.
 
