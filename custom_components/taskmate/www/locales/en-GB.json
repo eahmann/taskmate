@@ -1861,5 +1861,8 @@
   "child.checklist_complete": "Checklist complete",
   "child.checklist_error": "Could not update checklist: {message}",
   "child.checklist_photo": "Check the last item and add a photo to finish.",
-  "common.checklist_use_child_card": "Complete the checklist on the child dashboard"
+  "common.checklist_use_child_card": "Complete the checklist on the child dashboard",
+  "child_page.my_rewards": "My rewards",
+  "child_page.navigation": "Child pages",
+  "child_page.unavailable": "This child's information is unavailable. Check the TaskMate connection and child selection."
 }

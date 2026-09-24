@@ -91,7 +91,7 @@ class TestDimMode:
     def test_designed_styles_dim_too(self):
         """The designed row builder computes its own `dimmed` flag."""
         start = CARD.index("    const rows = childChores.map((chore, i) => {")
-        rows = CARD[start : CARD.index("_designChoreMeta(r) {", start)]
+        rows = CARD[start : CARD.index("\n  _designChoreMeta(", start)]
         assert "_isRecurrenceLocked" in rows, "designed styles never dim an unavailable recurring chore"
 
     def test_designed_done_button_is_disabled_when_locked(self):

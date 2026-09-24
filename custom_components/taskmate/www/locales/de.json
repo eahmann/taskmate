@@ -1861,5 +1861,8 @@
   "child.checklist_complete": "Checkliste abgeschlossen",
   "child.checklist_error": "Checkliste konnte nicht aktualisiert werden: {message}",
   "child.checklist_photo": "Hake den letzten Eintrag ab und füge zum Abschluss ein Foto hinzu.",
-  "common.checklist_use_child_card": "Fülle die Checkliste auf dem Kinder-Dashboard aus"
+  "common.checklist_use_child_card": "Fülle die Checkliste auf dem Kinder-Dashboard aus",
+  "child_page.my_rewards": "Meine Belohnungen",
+  "child_page.navigation": "Kinderseiten",
+  "child_page.unavailable": "Die Informationen dieses Kindes sind nicht verfügbar. Prüfe die TaskMate-Verbindung und die Auswahl des Kindes."
 }

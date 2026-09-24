@@ -6,6 +6,9 @@
 
 This fork adds [daily Routines built from ordinary chores](ROUTINES.md).
 
+An optional [responsive child page](CHILD-PAGES.md) combines a compact Stars
+header, Chores / My rewards navigation, and flat lists that expand for tablets.
+
 **Checklist chores** break one chore into required, unscored items. Choose
 **Task type → Checklist** when adding or editing a chore, set the chore's points,
 then add its items. For example, **Get dressed — 2 stars** could contain

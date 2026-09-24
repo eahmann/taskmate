@@ -1726,6 +1726,62 @@ class TaskMateChildCard extends LitElement {
          Only card-specific layout classes live here.
          Ported from docs/design/redesigns/frag/03-child.html.
       ══════════════════════════════════════════════════════════════════ */
+      /* Opt-in page presentation; standalone cards keep their existing design. */
+      ha-card.tmd.tm-app {
+        container: child-content / inline-size;
+        --tmd-text: var(--primary-text-color); --tmd-muted: var(--secondary-text-color);
+        --tmd-border: var(--divider-color, #8884); --tmd-good: var(--tm-page-good, #40c9a4);
+        --tmd-font-body: var(--paper-font-body1_-_font-family, system-ui, sans-serif);
+        --tmd-font-display: var(--tmd-font-body);
+        background: transparent; border: 0; border-radius: 0; box-shadow: none; overflow: visible;
+      }
+      .tm-app > .tmd-hd { display: none; }
+      .tm-app .tmd-bd { padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px; }
+      .tm-app.has-routines .tmd-section { display: none; }
+      .tm-app .tm-routine { container: routine / inline-size; min-width: 0;
+        border: 0 !important; border-radius: 0 !important; padding: 0 !important; margin: 0 !important; }
+      .tm-app .tm-routine > header { gap: 12px !important; margin-bottom: 12px !important; }
+      .tm-app .tm-routine > header > ha-icon { --mdc-icon-size: 28px; color: var(--tm-page-accent); }
+      .tm-app .tm-routine > header strong { display: block; font-size: clamp(20px, 2cqw, 30px); line-height: 1.25; }
+      .tm-app .tm-routine > header > div > div { margin-top: 6px; color: var(--secondary-text-color); }
+      .tm-app .tm-routine > header > span { color: var(--tmd-gold); font-weight: 750; font-size: 18px; }
+      .tm-routine-progress { display: block; appearance: none; width: 100%; height: 5px; border: 0;
+        border-radius: 3px; overflow: hidden; margin: 16px 0 8px; background: var(--divider-color, #8884); }
+      .tm-routine-progress::-webkit-progress-bar { background: var(--divider-color, #8884); }
+      .tm-routine-progress::-webkit-progress-value { background: var(--tm-page-accent); border-radius: 3px; }
+      .tm-routine-progress::-moz-progress-bar { background: var(--tm-page-accent); }
+      .tm-app .tmd-chores { gap: 0 32px; align-items: start; }
+      .tm-app .tmd-chore { box-sizing: border-box; min-width: 0; min-height: 104px; border-radius: 0; background: transparent;
+        display: grid; grid-template-columns: 28px minmax(0, 1fr) auto;
+        padding: 16px 0; gap: 12px; border-bottom: 1px solid var(--divider-color, #8884); }
+      .tm-app .tmd-chore .num-badge { display: none; }
+      .tm-app .tmd-chore .ch-emoji { font-size: 28px; }
+      .tm-app .tmd-chore .ch-emoji ha-icon { --mdc-icon-size: 28px; }
+      .tm-app .tmd-chore .ch-name { font: 700 clamp(16px, 1.7cqw, 24px)/1.35 var(--tmd-font-body);
+        white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+      .tm-app .tmd-chore .chip.soft { background: transparent; padding: 0; border: 0; color: var(--tmd-gold); font-size: 14px; }
+      .tm-app .tmd-chore > .btn, .tm-app .tmd-chore > .tmd-undochip { flex: none; min-width: 70px; min-height: 48px;
+        padding: 10px 12px; font: 750 16px var(--tmd-font-body); border-radius: 12px; }
+      .tm-app .tmd-chore.done { opacity: 1; }
+      .tm-app .tmd-chore.done .ch-name { color: var(--secondary-text-color); }
+      .tm-app .tmd-chore .done-chip { font-size: 14px; white-space: normal; text-align: center; max-width: 110px; }
+      .tm-app .tmd-desc, .tm-app .tm-routine > p { color: var(--secondary-text-color); font-size: 14px; line-height: 1.5; }
+      .tm-app .tmd-chore > .tmd-desc { grid-column: 1 / -1; margin: 0; max-width: 65ch; }
+      .tm-app button:focus-visible { outline: 3px solid var(--primary-color); outline-offset: 3px; }
+      @container routine (min-width: 700px) {
+        .tm-app .tm-routine > .tmd-chores { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+      @container child-content (min-width: 1100px) {
+        .tm-app .tmd-bd { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; }
+        .tm-app .tm-routine:only-of-type { grid-column: 1 / -1; }
+        .tm-app .tmd-bd > :not(.tm-routine) { grid-column: 1 / -1; }
+        .tm-app .tmd-bd > .tmd-chores { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .tm-app .tmd-chore { min-height: 148px; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 20px; padding: 24px 0; }
+        .tm-app .tmd-chore .ch-name { font-size: 24px; }
+        .tm-app .tmd-chore > .btn, .tm-app .tmd-chore > .tmd-undochip { min-width: 94px; min-height: 60px; font-size: 20px; }
+        .tm-app .tmd-chore .ch-emoji ha-icon { --mdc-icon-size: 38px; }
+        .tm-app .tmd-desc, .tm-app .tm-routine > p { font-size: 16px; }
+      }
       .tmd-chores { display: grid; gap: 11px; }
       /* Auto grid tracks use the rows' min-content width, which can push
          completion buttons outside a narrow card (especially in routines). */
@@ -2463,7 +2519,7 @@ class TaskMateChildCard extends LitElement {
         : design === "console" ? this._designConsole(child, groupRows, remaining, tone)
         : this._designCleanpro(child, groupRows, remaining, tone), pointsIcon);
 
-    return html`<ha-card class="tmd" style="--hd:${hd}">
+    return html`<ha-card class="tmd ${this.config.app_layout ? `tm-app ${child.routines?.length ? 'has-routines' : ''}` : ''}" style="--hd:${hd}">
       ${this._designHeaderFull(child, design, remaining, rows.length, tone, pendingPoints)}
       ${this._renderUndoActions(attrs, child)}
       <div class="tmd-bd">
@@ -2550,6 +2606,9 @@ class TaskMateChildCard extends LitElement {
           ${routine.bonus_points > 0 ? html`<span style="white-space:nowrap">${routine.done ? '✓' : '+'}${routine.bonus_points}
             <ha-icon icon="${pointsIcon}" style="--mdc-icon-size:18px"></ha-icon></span>` : ''}
         </header>
+        ${this.config.app_layout ? html`<progress class="tm-routine-progress"
+          aria-label=${routine.name} max=${Math.max(1, routine.required_count || 0)}
+          value=${Math.min(routine.completed_count || 0, routine.required_count || 0)}></progress>` : ''}
         ${routine.description ? html`<p>${routine.description}</p>` : ''}
         ${routine.pending_count ? html`<p role="status">${this._t('routine.pending', { count: routine.pending_count })}</p>` : ''}
         ${routine.done ? html`<p role="status">${this._t('routine.complete_status')}</p>` : ''}
@@ -2593,8 +2652,8 @@ class TaskMateChildCard extends LitElement {
   }
 
   /** Shared meta tags (mandatory / photo / description) for a designed chore row. */
-  _designChoreMeta(r) {
-    const showDesc = this.config.show_description === true && r.chore.description;
+  _designChoreMeta(r, includeDescription = true) {
+    const showDesc = includeDescription && this.config.show_description === true && r.chore.description;
     // A blocked chore says what unlocks it here too — the classic row carries
     // the same label, and a dimmed row with no reason is just confusing (#793).
     const depNames = r.blocked ? (r.chore._dependencyNames || []) : [];
@@ -2673,12 +2732,14 @@ class TaskMateChildCard extends LitElement {
           <span class="ch-emoji">${r.glyph}</span>
           <div class="ch-mid">
             <div class="ch-name">${r.chore.name}</div>
-            ${r.done ? "" : html`<div class="chip soft" style="margin-top:3px">+${r.points} ⭐</div>`}
-            ${this._designChoreMeta(r)}
+            ${r.done || (this.config.app_layout && r.points === 0) ? "" : html`<div class="chip soft" style="margin-top:3px">+${r.points} ⭐</div>`}
+            ${this._designChoreMeta(r, !this.config.app_layout)}
           </div>
           ${r.done
             ? this._designUndoChip(r, html`${this._t("child.done") || "Done"}! 🎉`)
             : this._designDoneBtn(r, r.photo ? `📷 ${this._t("child.done") || "DONE"}` : (this._t("child.done") || "DONE"), "good")}
+          ${this.config.app_layout && this.config.show_description === true && r.chore.description
+            ? html`<div class="tmd-desc">${r.chore.description}</div>` : ""}
         </div>
         ${this._designBonus(r)}`)}
     </div>`;

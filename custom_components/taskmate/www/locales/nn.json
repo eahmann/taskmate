@@ -1861,5 +1861,8 @@
   "child.checklist_complete": "Sjekklista er fullført",
   "child.checklist_error": "Klarte ikkje oppdatere sjekklista: {message}",
   "child.checklist_photo": "Kryss av det siste punktet og legg til eit bilete for å fullføre.",
-  "common.checklist_use_child_card": "Fullfør sjekklista på dashbordet til barnet"
+  "common.checklist_use_child_card": "Fullfør sjekklista på dashbordet til barnet",
+  "child_page.my_rewards": "Mine løningar",
+  "child_page.navigation": "Barnesider",
+  "child_page.unavailable": "Informasjonen om dette barnet er utilgjengeleg. Sjekk TaskMate-tilkoplinga og kva barn som er valt."
 }

@@ -1861,5 +1861,8 @@
   "child.checklist_complete": "Liste terminée",
   "child.checklist_error": "Impossible de mettre à jour la liste : {message}",
   "child.checklist_photo": "Coche le dernier élément et ajoute une photo pour terminer.",
-  "common.checklist_use_child_card": "Complète la liste sur le tableau de bord de l’enfant"
+  "common.checklist_use_child_card": "Complète la liste sur le tableau de bord de l’enfant",
+  "child_page.my_rewards": "Mes récompenses",
+  "child_page.navigation": "Pages des enfants",
+  "child_page.unavailable": "Les informations de cet enfant sont indisponibles. Vérifiez la connexion à TaskMate et l’enfant sélectionné."
 }

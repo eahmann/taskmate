@@ -21,7 +21,17 @@ WWW = pathlib.Path(__file__).resolve().parent.parent / "custom_components" / "ta
 #   the two incentive wrappers delegate their whole render to
 #   createIncentiveCard(), which lives in taskmate-incentive-card.js and does
 #   wire the design system.
-_WRAPPER_EXEMPT = {"taskmate-bonuses-card.js", "taskmate-penalties-card.js"}
+#   The child page supplies its own navigation shell and embeds the existing
+#   designed chore/reward cards; frontend tests verify their pinned config.
+_WRAPPER_EXEMPT = {
+    "taskmate-bonuses-card.js": ("createIncentiveCard",),
+    "taskmate-penalties-card.js": ("createIncentiveCard",),
+    "taskmate-child-page-card.js": (
+        '"taskmate-child-card"',
+        '"taskmate-rewards-card"',
+        "this._content.setConfig(this._contentConfig())",
+    ),
+}
 
 
 def _card_files() -> list[pathlib.Path]:
@@ -38,7 +48,8 @@ def test_every_card_wires_the_design_system():
         src = f.read_text(encoding="utf-8")
         if f.name in _WRAPPER_EXEMPT:
             # Must actually be a thin wrapper, or the exemption is a lie.
-            assert "createIncentiveCard" in src, f"{f.name} is exempt but not a wrapper"
+            for delegate in _WRAPPER_EXEMPT[f.name]:
+                assert delegate in src, f"{f.name} is exempt but no longer delegates to {delegate}"
             continue
         if "__taskmate_design" not in src:
             missing.append(f.name)
