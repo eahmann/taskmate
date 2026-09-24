@@ -145,7 +145,7 @@ class TaskMateChildPageCard extends LitElement {
           @click=${e => this._navigate(e, this.config.rewards_path)}>
           <ha-icon icon="mdi:gift-outline"></ha-icon>${this._t("child_page.my_rewards")}</a>
       </nav>
-      <div class="workspace">${this._content || html`<div class="empty" role="status">${this._t("common.loading")}</div>`}</div>
+      <div class="workspace">${this._content || html`<div class="empty" role="status">${this._t("panel.loading")}</div>`}</div>
     </section>`;
   }
 }
