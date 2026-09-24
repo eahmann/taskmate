@@ -969,6 +969,41 @@ class TaskMateRewardsCard extends LitElement {
 
       /* ── Designed (playroom / console / cleanpro) — shared .tmd kit comes
          from taskmate-design.js styles(); only card-specific layout below. ── */
+      ha-card.tmd.tm-app {
+        container: reward-content / inline-size;
+        --tmd-text: var(--primary-text-color); --tmd-muted: var(--secondary-text-color);
+        --tmd-border: var(--divider-color, #8884); --tmd-good: var(--tm-page-good, #40c9a4);
+        --tmd-font-body: var(--paper-font-body1_-_font-family, system-ui, sans-serif);
+        --tmd-font-display: var(--tmd-font-body);
+        background: transparent; border: 0; border-radius: 0; box-shadow: none; overflow: visible;
+      }
+      .tm-app > .tmd-hd, .tm-app .rw-sel { display: none; }
+      .tm-app .tmd-bd { padding: 0; }
+      .tm-app .rw-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 40px; }
+      .tm-app .rw-card { min-width: 0; padding: 24px 0; border: 0; border-bottom: 1px solid var(--divider-color, #8884);
+        border-radius: 0; background: transparent; gap: 16px; }
+      .tm-app .rw-name { font: 700 clamp(18px, 1.8cqw, 26px)/1.35 var(--tmd-font-body); overflow-wrap: anywhere; }
+      .tm-app .rw-top { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px; }
+      .tm-app .rw-cost { grid-column: 2; background: transparent; color: var(--tmd-gold); padding: 0; border: 0; font-size: 16px; }
+      .tm-app .rw-emoji { padding-top: 3px; font-size: 26px; }
+      .tm-app .bar { height: 5px; }
+      .tm-app .rw-foot { flex-wrap: wrap; }
+      .tm-app .rw-status { font-size: 14px; }
+      .tm-app .btn { min-height: 48px; font: 750 16px var(--tmd-font-body); border-radius: 12px; padding: 12px 16px; }
+      .tm-app .btn:disabled { opacity: .55; }
+      .tm-app details { color: var(--secondary-text-color); font-size: 14px; line-height: 1.5; }
+      .tm-app summary { cursor: pointer; min-height: 44px; width: fit-content; align-content: center; }
+      .tm-app details p { margin: 0; max-width: 65ch; }
+      .tm-app summary:focus-visible, .tm-app button:focus-visible { outline: 3px solid var(--primary-color); outline-offset: 3px; }
+      @container reward-content (min-width: 800px) {
+        .tm-app .rw-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .tm-app .rw-card { padding: 28px 0; }
+      }
+      @container reward-content (min-width: 1500px) {
+        .tm-app .rw-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .tm-app .btn { min-height: 58px; font-size: 19px; }
+        .tm-app details, .tm-app .rw-status { font-size: 16px; }
+      }
       .rw-list { display: flex; flex-direction: column; gap: 11px; }
       /* #604: default is fluid — the list grows to fit every reward. Opt into a
          fixed 360px scroll region with expand_to_fit: false. */
@@ -1966,7 +2001,7 @@ class TaskMateRewardsCard extends LitElement {
         </div>`;
 
     return html`
-      <ha-card class="tmd" style="--hd:${hd}">
+      <ha-card class="tmd ${this.config.app_layout ? 'tm-app' : ''}" style="--hd:${hd}">
         ${header}
         <div class="tmd-bd">${body}</div>
       </ha-card>
@@ -2070,7 +2105,9 @@ class TaskMateRewardsCard extends LitElement {
           <div class="rw-info">
             ${d.isJackpot ? html`<span class="chip rw-jackpot-label">🎰 ${this._t('rewards.jackpot')}</span>` : ''}
             <div class="rw-name">${reward.name}</div>
-            ${reward.description ? html`<div class="muted rw-desc">${reward.description}</div>` : ''}
+            ${reward.description ? this.config.app_layout
+              ? html`<details><summary>${this._t('child_page.details')}</summary><p>${reward.description}</p></details>`
+              : html`<div class="muted rw-desc">${reward.description}</div>` : ''}
             ${avail ? html`<span class="chip soft rw-avail rw-avail-${avail.tone}">${avail.label}</span>` : ''}
             ${badges ? html`<div class="rw-badges">${badges}</div>` : ''}
           </div>
