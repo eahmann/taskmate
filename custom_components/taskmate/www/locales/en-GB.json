@@ -1864,5 +1864,6 @@
   "common.checklist_use_child_card": "Complete the checklist on the child dashboard",
   "child_page.my_rewards": "My rewards",
   "child_page.navigation": "Child pages",
-  "child_page.unavailable": "This child's information is unavailable. Check the TaskMate connection and child selection."
+  "child_page.unavailable": "This child's information is unavailable. Check the TaskMate connection and child selection.",
+  "child_page.select_child": "Choose a child"
 }

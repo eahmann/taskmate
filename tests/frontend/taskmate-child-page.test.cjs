@@ -16,6 +16,7 @@ function pageHarness() {
   class Content { setConfig(value) { this.config = value; } }
   const registry = new Map([['hui-view', View], ['taskmate-child-card', Content], ['taskmate-rewards-card', Content]]);
   const navigation = [];
+  const listeners = new Map();
   const window = {
     __taskmate_localize: (_, key) => messages[key] || key,
     location: { pathname: '/kids/maggie' },
@@ -24,7 +25,9 @@ function pageHarness() {
   };
   vm.runInNewContext(readFileSync(path.join(www, 'taskmate-child-page-card.js'), 'utf8'), {
     window, customElements: { get: tag => registry.get(tag), define: (tag, cls) => registry.set(tag, cls) },
-    document: { createElement: tag => Object.assign(new Content(), { localName: tag }) },
+    document: { createElement: tag => Object.assign(new Content(), { localName: tag }),
+      addEventListener: (type, callback) => listeners.set(type, callback),
+      removeEventListener: type => listeners.delete(type) },
     CustomEvent: class { constructor(type) { this.type = type; } },
   });
   const page = new (registry.get('taskmate-child-page-card'))();
@@ -34,8 +37,62 @@ function pageHarness() {
   const children = [{ id: 'maggie', name: 'Maggie', points: 15, spendable_balance: 5, committed_points: 10 },
     { id: 'ellie', name: 'Ellie', points: 99 }];
   page.hass = { states: { 'sensor.taskmate_overview': { attributes: { children, points_name: 'Stars' } } } };
-  return { page, config, children, navigation, view: () => rendered(page.render()).markup };
+  return { page, config, children, navigation, listeners, view: () => rendered(page.render()).markup };
 }
+
+const childPages = [
+  { child_id: 'maggie', chores_path: '/kids/maggie', rewards_path: '/kids/maggie-rewards' },
+  { child_id: 'ellie', chores_path: '/kids/ellie', rewards_path: '/rewards/ellie-gifts' },
+];
+
+for (const tab of ['chores', 'rewards']) {
+  test(`child picker keeps the ${tab} tab when switching children`, async () => {
+    const { page, config, view, navigation, listeners } = pageHarness();
+    page.setConfig({ ...config, view: tab, child_pages: childPages });
+    assert.match(view(), /aria-expanded=false/);
+    await rendered(page.render()).buttons.find(button => button.attrs.includes('child-trigger')).click();
+    assert.match(view(), /aria-expanded=true/);
+    const destination = tab === 'rewards' ? '/rewards/ellie-gifts' : '/kids/ellie';
+    assert.match(view(), new RegExp(`href=${destination} aria-current=false`));
+    assert.match(view(), /class="check"/);
+    page._navigate({ button: 0, preventDefault() {} }, destination);
+    assert.equal(navigation[0][2], destination);
+    assert.equal(navigation[1], 'location-changed');
+    assert.equal(page._pickerOpen, false);
+    assert.equal(listeners.size, 0);
+    // Navigation changes routes; no local child swap can leave content and URL disagreeing.
+    assert.equal(page._content.config.child_id, 'maggie');
+  });
+}
+
+test('picker dismisses outside or on Escape and restores focus only for Escape', () => {
+  const { page, config, listeners } = pageHarness();
+  page.setConfig({ ...config, child_pages: childPages });
+  const switcher = {};
+  let focused = 0;
+  page.renderRoot = { querySelector: selector => selector === '.child-switcher' ? switcher : { focus: () => focused++ } };
+  page._openPicker();
+  listeners.get('pointerdown')({ composedPath: () => [switcher] });
+  assert.equal(page._pickerOpen, true);
+  listeners.get('pointerdown')({ composedPath: () => [{}] });
+  assert.equal(page._pickerOpen, false);
+  assert.equal(focused, 0);
+  page._openPicker();
+  listeners.get('keydown')({ key: 'Escape', preventDefault() {} });
+  assert.equal(page._pickerOpen, false);
+  assert.equal(focused, 1);
+  assert.equal(listeners.size, 0);
+});
+
+test('picker only offers known children with valid, explicit dashboard routes', () => {
+  const { page, config, children, view } = pageHarness();
+  page.setConfig({ ...config, child_pages: childPages });
+  children.splice(1, 1);
+  assert.doesNotMatch(view(), /child-trigger|Ellie/);
+  assert.throws(() => page.setConfig({ ...config, child_pages: {} }), /must be a list/);
+  assert.throws(() => page.setConfig({ ...config, child_pages: [childPages[0], childPages[0]] }), /unique child_id/);
+  assert.throws(() => page.setConfig({ ...config, child_pages: [{ ...childPages[1], rewards_path: '//outside.example' }] }), /local dashboard path/);
+});
 
 test('workspace pins both bodies to the selected child and forwards fresh state', () => {
   const { page, config } = pageHarness();
