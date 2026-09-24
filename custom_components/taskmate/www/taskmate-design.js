@@ -140,6 +140,8 @@
 :host([data-tm-design="console"]) .btn.ghost{box-shadow:none}
 .btn.good{background:var(--tmd-good);color:#06301f}
 .btn.bad{background:var(--tmd-bad);color:#3a0d0d}
+.tm-app .btn:not(.ghost):not(.bad){background:var(--tm-child-color,var(--tm-page-accent));color:var(--tm-child-on-color,var(--tm-page-on-accent,#111111))}
+.tm-app .btn:disabled{opacity:.55;cursor:not-allowed}
 .btn.round{border-radius:50%;width:38px;height:38px;padding:0;justify-content:center;font-size:18px}
 .btn.sm{padding:6px 10px;font-size:12.5px}
 .stat{background:var(--tmd-surface-2);border:1px solid var(--tmd-border);border-radius:var(--tmd-radius-sm);padding:10px 11px}
@@ -253,6 +255,8 @@
         if (accent) el.style?.setProperty(token, accent);
         else el.style?.removeProperty(token);
       }
+      if (accent) el.style?.setProperty("--tm-child-on-color", onColor(accent));
+      else el.style?.removeProperty("--tm-child-on-color");
     }
     return design;
   }
