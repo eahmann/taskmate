@@ -154,6 +154,7 @@ class Child:
 
     name: str
     avatar: str = "mdi:account-circle"
+    color: str = ""  # Empty inherits the card/theme default.
     points: int = 0
     total_points_earned: int = 0
     total_chores_completed: int = 0
@@ -188,6 +189,7 @@ class Child:
         return cls(
             name=data.get("name", ""),
             avatar=data.get("avatar", "mdi:account-circle"),
+            color=data.get("color", ""),
             points=data.get("points", 0),
             total_points_earned=data.get("total_points_earned", 0),
             total_chores_completed=data.get("total_chores_completed", 0),
@@ -220,6 +222,7 @@ class Child:
         return {
             "name": self.name,
             "avatar": self.avatar,
+            "color": self.color,
             "points": self.points,
             "total_points_earned": self.total_points_earned,
             "total_chores_completed": self.total_chores_completed,
@@ -258,6 +261,7 @@ class Chore:
     assigned_to: list[str] = field(default_factory=list)  # List of child IDs
     requires_approval: bool = True
     time_category: str = "anytime"  # morning, afternoon, evening, night, anytime
+    display_category: str = ""  # Visual grouping; independent of assignment groups.
     claim_allowance_minutes: int = 0  # Grace minutes past period end during which the chore stays claimable; 0 = no grace. Night chores still cap at midnight.
     daily_limit: int = 1
     completion_sound: str = "coin"  # Sound to play on completion
@@ -374,6 +378,7 @@ class Chore:
             assigned_to=list(data.get("assigned_to", [])),
             requires_approval=data.get("requires_approval", True),
             time_category=data.get("time_category", "anytime"),
+            display_category=str(data.get("display_category", "") or "").strip()[:80],
             claim_allowance_minutes=max(0, int(data.get("claim_allowance_minutes", 0) or 0)),
             daily_limit=data.get("daily_limit", 1),
             completion_sound=data.get("completion_sound", "coin"),
@@ -442,6 +447,7 @@ class Chore:
             "assigned_to": self.assigned_to,
             "requires_approval": self.requires_approval,
             "time_category": self.time_category,
+            "display_category": self.display_category,
             "claim_allowance_minutes": self.claim_allowance_minutes,
             "daily_limit": self.daily_limit,
             "completion_sound": self.completion_sound,

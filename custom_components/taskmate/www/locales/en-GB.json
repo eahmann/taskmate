@@ -1865,5 +1865,21 @@
   "child_page.my_rewards": "My rewards",
   "child_page.navigation": "Child pages",
   "child_page.unavailable": "This child's information is unavailable. Check the TaskMate connection and child selection.",
-  "child_page.select_child": "Choose a child"
+  "child_page.select_child": "Choose a child",
+  "panel.child_color_label": "Child color",
+  "panel.child_color_hint": "Used throughout this child’s UI unless a card overrides it. Reset uses the theme default.",
+  "panel.child_color_reset": "Use theme default",
+  "panel.chore_display_category_label": "Display category",
+  "panel.chore_display_category_hint": "Optional heading for ordinary chores, e.g. Laundry. Does not change scheduling or assignment groups.",
+  "family.routines": "Routines",
+  "family.other_chores": "Other chores",
+  "family.filter_chores": "Filter chores",
+  "family.parents": "Parents",
+  "family.next": "Next: {name}",
+  "family.none_ready": "No step is ready right now",
+  "family.no_routines": "No routines due right now",
+  "family.other_available": "{count} other chores available",
+  "family.open_chores": "Open chores",
+  "family.today": "Today",
+  "family.routine_progress": "{done} of {total} required routine chores approved"
 }

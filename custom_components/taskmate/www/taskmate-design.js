@@ -248,8 +248,33 @@
     if (el) {
       el.setAttribute("data-tm-design", design);
       el.toggleAttribute("data-tm-dark", design !== "classic" && isDark(hass, el));
+      const accent = cardColor(hass, config, "");
+      for (const token of ["--tm-child-color", "--tmd-accent"]) {
+        if (accent) el.style?.setProperty(token, accent);
+        else el.style?.removeProperty(token);
+      }
     }
     return design;
+  }
+
+  // Stored colors are strict hex. Old backups and invalid values safely inherit.
+  function childColor(child, override, fallback = "#b885e3") {
+    if (typeof override === "string" && /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(override)) return override;
+    return typeof child?.color === "string" && /^#[0-9a-f]{6}$/i.test(child.color) ? child.color : fallback;
+  }
+
+  function cardColor(hass, config, fallback) {
+    const attrs = window.__taskmate_attrs?.(hass, config?.entity) || hass?.states?.[config?.entity]?.attributes || {};
+    const child = (attrs.children || []).find(c => c.id === config?.child_id);
+    return childColor(child, config?.accent_color || config?.header_color, fallback);
+  }
+
+  function onColor(color) {
+    if (color.length === 4) color = "#" + [...color.slice(1)].map(c => c + c).join("");
+    const rgb = color.slice(1).match(/../g)?.map(v => parseInt(v, 16) / 255) || [0, 0, 0];
+    const linear = rgb.map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+    const luminance = .2126 * linear[0] + .7152 * linear[1] + .0722 * linear[2];
+    return luminance > .179 ? "#111111" : "#ffffff";
   }
 
   /** ha-form select options for a per-card design override (includes "use global"). */
@@ -307,7 +332,7 @@
     `;
   }
 
-  window.__taskmate_design = { IDS, resolve, isDark, apply, editorOptions, styles, cssText, tokensCSS: TOKENS, colourPicker };
+  window.__taskmate_design = { IDS, resolve, isDark, apply, editorOptions, styles, cssText, tokensCSS: TOKENS, colourPicker, childColor, cardColor, onColor };
 
   /**
    * The single place that decides what a chore looks like (#750).

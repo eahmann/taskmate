@@ -670,6 +670,7 @@ class TaskMatePanel extends HTMLElement {
     if (act === "toggle-challenge-assigned") { this._toggleArrayField("assigned_to", t.dataset.id); return; }
 
     // Avatar unlockables
+    if (act === "reset-child-color") { this._dialog.data.color = ""; this._render(); return; }
     if (act === "manage-avatars")     { this._openAvatarCatalogDialog(); return; }
     if (act === "avatar-add-row")     { this._avatarAddRow(); return; }
     if (act === "avatar-del-row")     { this._avatarDelRow(Number(t.dataset.idx)); return; }
@@ -1277,7 +1278,7 @@ class TaskMatePanel extends HTMLElement {
       const c = (this._state.children || []).find(x => x.id === id);
       if (!c) return;
       this._openDialog({ kind: "child", mode: "edit", data: {
-        id: c.id, name: c.name || "", avatar: c.avatar || "mdi:account-circle",
+        id: c.id, name: c.name || "", avatar: c.avatar || "mdi:account-circle", color: c.color || "",
         availability_entity: c.availability_entity || "",
         availability_inverted: !!c.availability_inverted,
         unavailability_entity: c.unavailability_entity || "",
@@ -1286,7 +1287,7 @@ class TaskMatePanel extends HTMLElement {
       } });
     } else {
       this._openDialog({ kind: "child", mode: "add", data: {
-        name: "", avatar: "mdi:account-circle", availability_entity: "",
+        name: "", avatar: "mdi:account-circle", color: "", availability_entity: "",
         availability_inverted: false, unavailability_entity: "",
         pause_streak_when_unavailable: false,
         linked_user_id: "",
@@ -1306,11 +1307,11 @@ class TaskMatePanel extends HTMLElement {
     if (!d.name || !d.name.trim()) { this._showToast("err", this._t("panel.toast_name_required")); return; }
     const wasAdd = this._dialog.mode === "add";
     const payload = wasAdd
-      ? { type: "taskmate/add_child", name: d.name.trim(), avatar: d.avatar || "mdi:account-circle",
+      ? { type: "taskmate/add_child", name: d.name.trim(), avatar: d.avatar || "mdi:account-circle", color: d.color || "",
           availability_entity: d.availability_entity || "", availability_inverted: !!d.availability_inverted,
           unavailability_entity: d.unavailability_entity || "",
           pause_streak_when_unavailable: !!d.pause_streak_when_unavailable, linked_user_id: d.linked_user_id || "" }
-      : { type: "taskmate/update_child", child_id: d.id, name: d.name.trim(), avatar: d.avatar || "mdi:account-circle",
+      : { type: "taskmate/update_child", child_id: d.id, name: d.name.trim(), avatar: d.avatar || "mdi:account-circle", color: d.color || "",
           availability_entity: d.availability_entity || "", availability_inverted: !!d.availability_inverted,
           unavailability_entity: d.unavailability_entity || "",
           pause_streak_when_unavailable: !!d.pause_streak_when_unavailable, linked_user_id: d.linked_user_id || "" };
@@ -1397,6 +1398,7 @@ class TaskMatePanel extends HTMLElement {
       depends_on: d.depends_on || [],
       requires_approval: !!d.requires_approval,
       time_category: d.time_category || "anytime",
+      display_category: (d.display_category || "").trim(),
       schedule_mode: d.schedule_mode || "specific_days",
       due_days: d.due_days || [],
       daily_limit: Number(d.daily_limit) || 1,
@@ -1712,6 +1714,7 @@ class TaskMatePanel extends HTMLElement {
       depends_on: d.depends_on || [],
       requires_approval: !!d.requires_approval,
       time_category: d.time_category || "anytime",
+      display_category: (d.display_category || "").trim(),
       claim_allowance_minutes: Math.max(0, Number(d.claim_allowance_minutes) || 0),
       completion_sound: d.completion_sound || "coin",
       difficulty: d.difficulty || "medium",
@@ -5595,6 +5598,10 @@ class TaskMatePanel extends HTMLElement {
       [
         this._field(this._t("panel.child_name_label"), "name", d.name, "text", this._t("panel.child_name_placeholder")),
         this._iconPickerField(this._t("panel.child_avatar_label"), "avatar", d.avatar),
+        `<div class="tm-field"><label class="tm-field-label" for="child-color">${this._t("panel.child_color_label")}</label>
+          <input id="child-color" type="color" data-field="color" value="${/^#[0-9a-f]{6}$/i.test(d.color || "") ? d.color : "#b885e3"}">
+          <button type="button" class="tm-btn tm-btn-sm" data-act="reset-child-color">${this._t("panel.child_color_reset")}</button>
+          <span class="tm-field-hint">${this._t("panel.child_color_hint")}</span></div>`,
         this._entityPickerField(this._t("panel.child_availability_label"), "availability_entity", d.availability_entity, ["binary_sensor", "sensor", "input_boolean", "person"],
           this._t("panel.child_availability_hint")),
         hasAvail ? this._switch(this._t("panel.child_invert_label"), "availability_inverted", d.availability_inverted,
@@ -5714,6 +5721,7 @@ class TaskMatePanel extends HTMLElement {
           [{ v: "", l: this._t("panel.chore_rotation_no_override") }, ...children.map(c => ({ v: c.id, l: c.name }))],
           this._t("panel.chore_rotation_hint")
         ) : "",
+        this._field(this._t("panel.chore_display_category_label"), "display_category", d.display_category || "", "text", this._t("panel.chore_display_category_hint")),
         this._select(this._t("panel.chore_time_category_label"), "time_category", d.time_category, this._timeCategoryOptions()),
         this._field(this._t("panel.chore_claim_allowance_label"), "claim_allowance_minutes", d.claim_allowance_minutes, "number",
           this._t("panel.chore_claim_allowance_hint")),

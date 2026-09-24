@@ -1865,5 +1865,21 @@
   "child_page.my_rewards": "Meine Belohnungen",
   "child_page.navigation": "Kinderseiten",
   "child_page.unavailable": "Die Informationen dieses Kindes sind nicht verfügbar. Prüfe die TaskMate-Verbindung und die Auswahl des Kindes.",
-  "child_page.select_child": "Kind auswählen"
+  "child_page.select_child": "Kind auswählen",
+  "panel.child_color_label": "Farbe des Kindes",
+  "panel.child_color_hint": "Wird in der Oberfläche dieses Kindes verwendet, sofern eine Karte keine eigene Farbe festlegt. Zurücksetzen verwendet die Designfarbe.",
+  "panel.child_color_reset": "Designfarbe verwenden",
+  "panel.chore_display_category_label": "Anzeigekategorie",
+  "panel.chore_display_category_hint": "Optionale Überschrift für Aufgaben, z. B. Wäsche. Ändert weder Zeitplanung noch Zuweisungsgruppen.",
+  "family.routines": "Abläufe",
+  "family.other_chores": "Weitere Aufgaben",
+  "family.filter_chores": "Aufgaben filtern",
+  "family.parents": "Eltern",
+  "family.next": "Als Nächstes: {name}",
+  "family.none_ready": "Derzeit ist kein Schritt bereit",
+  "family.no_routines": "Derzeit keine fälligen Abläufe",
+  "family.other_available": "{count} weitere Aufgaben verfügbar",
+  "family.open_chores": "Aufgaben öffnen",
+  "family.today": "Heute",
+  "family.routine_progress": "{done} von {total} Pflichtaufgaben in Abläufen bestätigt"
 }

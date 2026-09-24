@@ -70,7 +70,7 @@ class TaskMateChildPageCard extends LitElement {
       nav a { flex: 1; min-width: 0; min-height: 48px; display: flex; justify-content: center;
         align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; text-decoration: none;
         font-size: clamp(15px, 1.4cqw, 20px); font-weight: 700; color: var(--secondary-text-color); }
-      nav a[aria-current="page"] { color: #17131e; background: var(--tm-page-accent); }
+      nav a[aria-current="page"] { color: var(--tm-page-on-accent, #17131e); background: var(--tm-page-accent); }
       nav a:focus-visible { outline: 3px solid var(--primary-color); outline-offset: 3px; }
       nav ha-icon { --mdc-icon-size: 22px; }
       .workspace { min-width: 0; }
@@ -161,7 +161,8 @@ class TaskMateChildPageCard extends LitElement {
 
   _contentConfig() {
     const shared = { entity: this.config.entity, child_id: this.config.child_id,
-      card_design: "playroom", app_layout: true };
+      card_design: "playroom", app_layout: true,
+      ...(this.config.accent_color ? { accent_color: this.config.accent_color } : {}) };
     return this.config.view === "rewards"
       ? { ...this.config.reward_options, ...shared, show_child_badges: false, expand_to_fit: true }
       : { time_category: "all", show_description: true, show_countdown: false,
@@ -191,6 +192,15 @@ class TaskMateChildPageCard extends LitElement {
 
   updated(changed) {
     if (changed.has("hass") && this._content) this._content.hass = this.hass;
+    const routineId = new URLSearchParams(window.location.search || "").get("routine");
+    if (this.config.view !== "chores" || !routineId || this._focusedRoutine === routineId || !this._content) return;
+    this._content.updateComplete?.then(() => {
+      const section = [...this._content.renderRoot.querySelectorAll('[data-routine-id]')].find(el => el.dataset.routineId === routineId);
+      if (!section) return;
+      this._focusedRoutine = routineId;
+      section.scrollIntoView({ block: "start" });
+      section.focus({ preventScroll: true });
+    });
   }
 
   _navigate(event, path) {
@@ -208,11 +218,11 @@ class TaskMateChildPageCard extends LitElement {
     const attrs = window.__taskmate_attrs?.(this.hass, this.config.entity) || entity?.attributes || {};
     const child = (attrs.children || []).find(c => c.id === this.config.child_id);
     if (!entity || !child) return html`<div class="empty" role="status">${this._t("child_page.unavailable")}</div>`;
-    const accent = /^#[0-9a-fA-F]{6}$/.test(this.config.accent_color || "") ? this.config.accent_color : "#b885e3";
+    const accent = window.__taskmate_design?.childColor?.(child, this.config.accent_color) || "#b885e3";
     const pages = this._childPages(attrs.children || []);
     const points = child.spendable_balance ?? child.points ?? 0;
     const reserved = child.committed_points || 0;
-    return html`<section class="page" style="--tm-page-accent:${accent}" aria-label=${child.name}>
+    return html`<section class="page" style="--tm-page-accent:${accent};--tm-page-on-accent:${window.__taskmate_design?.onColor?.(accent) || '#17131e'}" aria-label=${child.name}>
       <header class="identity">
         ${pages.length > 1 ? html`<div class="child-switcher">
           <h1><button class="child-trigger" aria-expanded=${this._pickerOpen ? 'true' : 'false'} aria-controls="child-picker"
@@ -224,7 +234,7 @@ class TaskMateChildPageCard extends LitElement {
           ${this._pickerOpen ? html`<div class="child-picker" id="child-picker" role="group" aria-label=${this._t('child_page.select_child')} @keydown=${event => this._pickerKeys(event)}>
             <div class="picker-label">${this._t('child_page.select_child')}</div>
             ${pages.map(page => html`<a href=${page.path} aria-current=${page.child_id === child.id ? 'page' : 'false'}
-              style=${`--tm-page-accent:${/^#[0-9a-fA-F]{6}$/.test(page.accent_color || '') ? page.accent_color : accent}`}
+              style=${`--tm-page-accent:${window.__taskmate_design?.childColor?.(page.child, page.accent_color) || accent}`}
               @click=${event => this._navigate(event, page.path)}>
               ${this._avatar(page.child)}<span class="name">${page.child.name}</span>
               ${page.child_id === child.id ? html`<ha-icon class="check" icon="mdi:check"></ha-icon>` : ''}

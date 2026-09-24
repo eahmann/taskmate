@@ -33,6 +33,7 @@ CARDS: Final = [
     "taskmate-routine-card.js",
     "taskmate-rewards-card.js",
     "taskmate-child-page-card.js",
+    "taskmate-family-page-card.js",
     "taskmate-approvals-card.js",
     "taskmate-points-card.js",
     "taskmate-reorder-card.js",
