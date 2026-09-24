@@ -1864,5 +1864,6 @@
   "common.checklist_use_child_card": "Complete a lista de verificação no painel da criança",
   "child_page.my_rewards": "Minhas recompensas",
   "child_page.navigation": "Páginas das crianças",
-  "child_page.unavailable": "As informações desta criança não estão disponíveis. Verifique a conexão com o TaskMate e a criança selecionada."
+  "child_page.unavailable": "As informações desta criança não estão disponíveis. Verifique a conexão com o TaskMate e a criança selecionada.",
+  "child_page.select_child": "Escolher uma criança"
 }

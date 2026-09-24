@@ -1864,5 +1864,6 @@
   "common.checklist_use_child_card": "Fullfør sjekklisten på barnets dashbord",
   "child_page.my_rewards": "Mine belønninger",
   "child_page.navigation": "Barnesider",
-  "child_page.unavailable": "Informasjonen om dette barnet er utilgjengelig. Sjekk TaskMate-tilkoblingen og hvilket barn som er valgt."
+  "child_page.unavailable": "Informasjonen om dette barnet er utilgjengelig. Sjekk TaskMate-tilkoblingen og hvilket barn som er valgt.",
+  "child_page.select_child": "Velg et barn"
 }

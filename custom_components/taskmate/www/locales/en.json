@@ -1864,5 +1864,6 @@
   "child.checklist_complete": "Checklist complete",
   "child.checklist_error": "Could not update checklist: {message}",
   "child.checklist_photo": "Check the last item and add a photo to finish.",
-  "common.checklist_use_child_card": "Complete the checklist on the child dashboard"
+  "common.checklist_use_child_card": "Complete the checklist on the child dashboard",
+  "child_page.select_child": "Choose a child"
 }

@@ -45,3 +45,24 @@ Configure that navigation card's bottom spacing so it does not cover the list.
 The page's ordinary links support browser back and opening in another tab.
 The header shows spendable Stars; any Stars committed to pending reward claims
 appear beneath it.
+
+To turn the name/avatar into a child chooser, add the same `child_pages` list to
+each child's Chores and My rewards page. Selecting a child keeps the current tab;
+the destination is explicit, so page names need not follow a naming convention.
+Names and avatars come from TaskMate. Only children present in the entity are shown.
+
+```yaml
+child_pages:
+  - child_id: FIRST_CHILD_ID
+    chores_path: /YOUR_DASHBOARD/first-child
+    rewards_path: /YOUR_DASHBOARD/first-child-rewards
+    accent_color: '#b885e3'
+  - child_id: SECOND_CHILD_ID
+    chores_path: /YOUR_DASHBOARD/second-child
+    rewards_path: /YOUR_DASHBOARD/second-child-rewards
+    accent_color: '#4ec9bb'
+```
+
+The chooser closes after selection, on an outside tap, or with Escape. Keyboard
+users can open it with Enter/Space or an arrow key and move through its links with
+Tab or arrow keys. Omitting the list preserves a static child header.

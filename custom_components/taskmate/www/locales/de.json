@@ -1864,5 +1864,6 @@
   "common.checklist_use_child_card": "Fülle die Checkliste auf dem Kinder-Dashboard aus",
   "child_page.my_rewards": "Meine Belohnungen",
   "child_page.navigation": "Kinderseiten",
-  "child_page.unavailable": "Die Informationen dieses Kindes sind nicht verfügbar. Prüfe die TaskMate-Verbindung und die Auswahl des Kindes."
+  "child_page.unavailable": "Die Informationen dieses Kindes sind nicht verfügbar. Prüfe die TaskMate-Verbindung und die Auswahl des Kindes.",
+  "child_page.select_child": "Kind auswählen"
 }
