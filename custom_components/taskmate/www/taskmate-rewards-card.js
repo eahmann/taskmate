@@ -1077,7 +1077,7 @@ class TaskMateRewardsCard extends LitElement {
       enable_pool_mode: false, // v3.0: "savings jar" allocation mode (opt-in per card)
       expand_to_fit: true, // #604: grow the card to fit all rewards (designed styles). false = fixed 360px scroll.
       deposit_amounts: [1, 5, 10], // #559: quick-deposit button amounts for pool/jackpot rewards
-      header_color: '#e67e22',
+      header_color: undefined,
       ...config,
     };
   }
@@ -1216,7 +1216,7 @@ class TaskMateRewardsCard extends LitElement {
 
     return html`
       <ha-card>
-        <style>:host { --taskmate-header-bg: ${_safeColor(this.config.header_color, '#e67e22')}; }</style>
+        <style>:host { --taskmate-header-bg: ${_safeColor(this.config.header_color, window.__taskmate_design?.cardColor?.(this.hass, this.config, '#e67e22') || '#e67e22')}; }</style>
         <div class="card-header">
           <div class="header-content">
             <ha-icon class="header-icon" icon="mdi:gift-outline"></ha-icon>
@@ -1825,6 +1825,7 @@ class TaskMateRewardsCard extends LitElement {
   _designTone(i) { return `var(--tmd-c${(i % 6) + 1})`; }
 
   _av(child, tone, size) {
+    tone = window.__taskmate_design?.childColor?.(child, this.config.accent_color || this.config.header_color, tone) || tone;
     const a = (child && child.avatar) || "";
     const inner = a.startsWith("mdi:")
       ? html`<ha-icon icon="${a}"></ha-icon>`
@@ -1951,7 +1952,7 @@ class TaskMateRewardsCard extends LitElement {
 
   _renderDesigned(design) {
     const entity = this.hass.states[this.config.entity];
-    const hd = _safeColor(this.config.header_color, '#e67e22');
+    const hd = _safeColor(this.config.header_color, window.__taskmate_design?.cardColor?.(this.hass, this.config, '#e67e22') || '#e67e22');
 
     if (!entity) {
       return html`<ha-card class="tmd" style="--hd:${hd}">

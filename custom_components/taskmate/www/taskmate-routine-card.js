@@ -148,7 +148,7 @@ class TaskMateRoutineCard extends LitElement {
     const design = window.__taskmate_design
       ? window.__taskmate_design.apply(this, this.hass, this.config, this.config.entity)
       : "classic";
-    const configured = this.config.header_color;
+    const configured = this.config.header_color || window.__taskmate_design?.cardColor?.(this.hass, this.config, "");
     if (typeof configured === "string" && /^#[0-9a-fA-F]{3,8}$/.test(configured)) {
       this.style.setProperty("--routine-accent", _safeColor(configured, DEFAULT_ACCENT));
     } else {

@@ -28,6 +28,7 @@ function pageHarness() {
     document: { createElement: tag => Object.assign(new Content(), { localName: tag }),
       addEventListener: (type, callback) => listeners.set(type, callback),
       removeEventListener: type => listeners.delete(type) },
+    URLSearchParams,
     CustomEvent: class { constructor(type) { this.type = type; } },
   });
   const page = new (registry.get('taskmate-child-page-card'))();

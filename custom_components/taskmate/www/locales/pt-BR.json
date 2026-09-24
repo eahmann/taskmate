@@ -1865,5 +1865,21 @@
   "child_page.my_rewards": "Minhas recompensas",
   "child_page.navigation": "Páginas das crianças",
   "child_page.unavailable": "As informações desta criança não estão disponíveis. Verifique a conexão com o TaskMate e a criança selecionada.",
-  "child_page.select_child": "Escolher uma criança"
+  "child_page.select_child": "Escolher uma criança",
+  "panel.child_color_label": "Cor da criança",
+  "panel.child_color_hint": "Usada na interface desta criança, exceto quando um cartão define outra cor. Redefinir usa a cor do tema.",
+  "panel.child_color_reset": "Usar a cor do tema",
+  "panel.chore_display_category_label": "Categoria de exibição",
+  "panel.chore_display_category_hint": "Título opcional para tarefas, por exemplo Lavanderia. Não altera horários nem grupos de atribuição.",
+  "family.routines": "Rotinas",
+  "family.other_chores": "Outras tarefas",
+  "family.filter_chores": "Filtrar tarefas",
+  "family.parents": "Pais",
+  "family.next": "Próxima: {name}",
+  "family.none_ready": "Nenhuma etapa está disponível agora",
+  "family.no_routines": "Nenhuma rotina prevista agora",
+  "family.other_available": "{count} outras tarefas disponíveis",
+  "family.open_chores": "Abrir tarefas",
+  "family.today": "Hoje",
+  "family.routine_progress": "{done} de {total} tarefas obrigatórias de rotina aprovadas"
 }

@@ -39,6 +39,7 @@ class TaskMateChildCard extends LitElement {
       _avatarPickerOpen: { type: Boolean },
       _photoCapture: { type: Object },
       _extraCapture: { type: Object },
+      _displayFilter: { state: true },
     };
   }
 
@@ -1738,8 +1739,22 @@ class TaskMateChildCard extends LitElement {
       .tm-app > .tmd-hd { display: none; }
       .tm-app .tmd-bd { padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px; }
       .tm-app.has-routines .tmd-section { display: none; }
-      .tm-app .tm-routine { container: routine / inline-size; min-width: 0;
-        border: 0 !important; border-radius: 0 !important; padding: 0 !important; margin: 0 !important; }
+      .tm-app .tm-groups { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+      .tm-app .tm-routine, .tm-app .tm-category { container: routine / inline-size; min-width: 0;
+        box-sizing: border-box; border: 1px solid var(--divider-color, #8884) !important;
+        border-radius: 20px !important; padding: clamp(12px, 2cqw, 24px) !important; margin: 0 !important;
+        background: color-mix(in srgb, var(--primary-text-color) 2%, transparent); }
+      .tm-app .tm-routine {
+        background: color-mix(in srgb, var(--tm-page-accent, var(--tmd-accent)) 13%, var(--primary-background-color));
+        border-color: color-mix(in srgb, var(--tm-page-accent, var(--tmd-accent)) 25%, transparent) !important; }
+      .tm-app .tm-category > header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+      .tm-app .tm-category > header strong { flex: 1; font-size: clamp(20px, 2cqw, 30px); overflow-wrap: anywhere; }
+      .tm-app .tm-category > header span { color: var(--secondary-text-color); }
+      .tm-filters { display: flex; flex-wrap: wrap; gap: 8px; grid-column: 1 / -1; }
+      .tm-filters button { min-height: 44px; padding: 8px 16px; border-radius: 24px; font: inherit;
+        cursor: pointer; color: var(--secondary-text-color); background: transparent; border: 1px solid var(--divider-color, #8884); }
+      .tm-filters button[aria-pressed="true"] { color: var(--primary-text-color);
+        border-color: var(--tm-page-accent, var(--tmd-accent)); background: color-mix(in srgb, var(--tm-page-accent, var(--tmd-accent)) 16%, transparent); }
       .tm-app .tm-routine > header { gap: 12px !important; margin-bottom: 12px !important; }
       .tm-app .tm-routine > header > ha-icon { --mdc-icon-size: 28px; color: var(--tm-page-accent); }
       .tm-app .tm-routine > header strong { display: block; font-size: clamp(20px, 2cqw, 30px); line-height: 1.25; }
@@ -1750,10 +1765,10 @@ class TaskMateChildCard extends LitElement {
       .tm-routine-progress::-webkit-progress-bar { background: var(--divider-color, #8884); }
       .tm-routine-progress::-webkit-progress-value { background: var(--tm-page-accent); border-radius: 3px; }
       .tm-routine-progress::-moz-progress-bar { background: var(--tm-page-accent); }
-      .tm-app .tmd-chores { gap: 0 32px; align-items: start; }
-      .tm-app .tmd-chore { box-sizing: border-box; min-width: 0; min-height: 104px; border-radius: 0; background: transparent;
+      .tm-app .tmd-chores { gap: 10px; align-items: start; }
+      .tm-app .tmd-chore { box-sizing: border-box; min-width: 0; min-height: 88px; border-radius: 13px; background: color-mix(in srgb, var(--primary-text-color) 4%, transparent);
         display: grid; grid-template-columns: 28px minmax(0, 1fr) auto;
-        padding: 16px 0; gap: 12px; border-bottom: 1px solid var(--divider-color, #8884); }
+        padding: 14px 12px; gap: 10px; border: 1px solid color-mix(in srgb, var(--primary-text-color) 5%, transparent); }
       .tm-app .tmd-chore .num-badge { display: none; }
       .tm-app .tmd-chore .ch-emoji { font-size: 28px; }
       .tm-app .tmd-chore .ch-emoji ha-icon { --mdc-icon-size: 28px; }
@@ -1771,16 +1786,14 @@ class TaskMateChildCard extends LitElement {
       @container routine (min-width: 700px) {
         .tm-app .tm-routine > .tmd-chores { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       }
-      @container child-content (min-width: 1100px) {
-        .tm-app .tmd-bd { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; }
-        .tm-app .tm-routine:only-of-type { grid-column: 1 / -1; }
-        .tm-app .tmd-bd > :not(.tm-routine) { grid-column: 1 / -1; }
-        .tm-app .tmd-bd > .tmd-chores { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .tm-app .tmd-chore { min-height: 148px; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 20px; padding: 24px 0; }
-        .tm-app .tmd-chore .ch-name { font-size: 24px; }
-        .tm-app .tmd-chore > .btn, .tm-app .tmd-chore > .tmd-undochip { min-width: 94px; min-height: 60px; font-size: 20px; }
-        .tm-app .tmd-chore .ch-emoji ha-icon { --mdc-icon-size: 38px; }
-        .tm-app .tmd-desc, .tm-app .tm-routine > p { font-size: 16px; }
+      @container child-content (min-width: 1000px) {
+        .tm-app .tm-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .tm-app .tm-groups > section:only-child { grid-column: 1 / -1; }
+      }
+      @container routine (max-width: 360px) {
+        .tm-app .tmd-chore { grid-template-columns: 24px minmax(0, 1fr) auto; gap: 8px; padding: 12px 10px; }
+        .tm-app .tmd-chore > .btn, .tm-app .tmd-chore > .tmd-undochip { min-width: 60px; padding: 10px; }
+        .tm-app .tm-routine > header > span { font-size: 15px; }
       }
       .tmd-chores { display: grid; gap: 11px; }
       /* Auto grid tracks use the rows' min-content width, which can push
@@ -2000,7 +2013,7 @@ class TaskMateChildCard extends LitElement {
       show_due_days_only: true,      // Whether to apply due_days filtering at all
       show_badges: true,             // Show badge strip between points and chores
       show_next_badge: true,         // Show progress toward the closest unearned badge
-            header_color: '#9b59b6',
+            header_color: undefined,
     ...config,
     };
   }
@@ -2113,7 +2126,7 @@ class TaskMateChildCard extends LitElement {
 
     return html`
       <ha-card>
-        <style>:host { --taskmate-header-bg: ${_safeColor(this.config.header_color, '#9b59b6')}; }</style>
+        <style>:host { --taskmate-header-bg: ${_safeColor(this.config.header_color, window.__taskmate_design?.cardColor?.(this.hass, this.config, '#9b59b6') || '#9b59b6')}; }</style>
         <div class="card-header">
           <div class="header-left">
             ${(() => {
@@ -2325,6 +2338,7 @@ class TaskMateChildCard extends LitElement {
   _designTone(i) { return `var(--tmd-c${(i % 6) + 1})`; }
 
   _av(child, tone, size) {
+    tone = window.__taskmate_design?.childColor?.(child, this.config.accent_color || this.config.header_color, tone) || tone;
     const a = child.avatar || "";
     const inner = a.startsWith("mdi:")
       ? html`<ha-icon icon="${a}"></ha-icon>`
@@ -2405,7 +2419,7 @@ class TaskMateChildCard extends LitElement {
 
   _renderDesigned(design) {
     const entity = this.hass.states[this.config.entity];
-    const hd = _safeColor(this.config.header_color, "#ff7043");
+    const hd = _safeColor(this.config.header_color, window.__taskmate_design?.cardColor?.(this.hass, this.config, "#ff7043") || "#ff7043");
 
     const header = (title, sub, pill) => html`
       <div class="tmd-hd">
@@ -2477,7 +2491,7 @@ class TaskMateChildCard extends LitElement {
       return {
         chore, child, done, loading, onAct, index: i, dimmed, blocked, recLocked, firstComeLocked,
         canUndo: this._canUndoCompletions(completions),
-        tone: this._designTone(i),
+        tone: window.__taskmate_design?.cardColor?.(this.hass, this.config, this._designTone(i)) || this._designTone(i),
         glyph: this._choreGlyph(chore),
         points: chore.effective_points ?? chore.points,
         timed: chore.task_type === "timed",
@@ -2519,7 +2533,7 @@ class TaskMateChildCard extends LitElement {
         : design === "console" ? this._designConsole(child, groupRows, remaining, tone)
         : this._designCleanpro(child, groupRows, remaining, tone), pointsIcon);
 
-    return html`<ha-card class="tmd ${this.config.app_layout ? `tm-app ${child.routines?.length ? 'has-routines' : ''}` : ''}" style="--hd:${hd}">
+    return html`<ha-card class="tmd ${this.config.app_layout ? `tm-app ${child.routines?.length ? 'has-routines' : ''}` : ''}" style="--hd:${hd};--tm-page-accent:${window.__taskmate_design?.cardColor?.(this.hass, this.config, hd) || hd}">
       ${this._designHeaderFull(child, design, remaining, rows.length, tone, pendingPoints)}
       ${this._renderUndoActions(attrs, child)}
       <div class="tmd-bd">
@@ -2585,18 +2599,22 @@ class TaskMateChildCard extends LitElement {
   /** A single grouping path for classic, designed and picture cards. The
    *  original chore rows still own completion, approval, photos and animation. */
   _renderRoutineGroups(child, items, getId, renderItems, pointsIcon = "mdi:star") {
-    if (!child.routines?.length) return renderItems(items);
+    if (!child.routines?.length && !this.config.app_layout) return renderItems(items);
+    const filters = [{ id: "all", label: this._t("common.all") }];
+    const selected = this._displayFilter || "all";
     const byId = new Map(items.map(item => [getId(item), item]));
     const grouped = new Set();
-    const sections = child.routines.map(routine => {
+    const sections = (child.routines || []).map(routine => {
       const members = routine.members.filter(m => byId.has(m.chore_id) && !grouped.has(m.chore_id));
       if (!members.length) return "";
       members.forEach(m => grouped.add(m.chore_id));
+      if (!filters.some(f => f.id === "routines")) filters.push({ id: "routines", label: this._t("family.routines") });
+      if (this.config.app_layout && !["all", "routines"].includes(selected)) return "";
       const optional = members.filter(m => !m.required).map(m => {
         const item = byId.get(m.chore_id);
         return (item.chore || item).name;
       });
-      return html`<section class="tm-routine" data-routine-id="${routine.id}" aria-label="${routine.name}"
+      return html`<section class="tm-routine" tabindex="-1" data-routine-id="${routine.id}" aria-label="${routine.name}"
         style="border:1px solid var(--divider-color,#8885);border-radius:16px;padding:12px;margin-bottom:16px">
         <header style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
           <ha-icon icon="${routine.done ? 'mdi:check-circle' : routine.icon || 'mdi:format-list-checks'}"></ha-icon>
@@ -2617,7 +2635,46 @@ class TaskMateChildCard extends LitElement {
       </section>`;
     });
     const rest = items.filter(item => !grouped.has(getId(item)));
-    return html`${sections}${rest.length ? renderItems(rest) : ''}`;
+    if (!this.config.app_layout) return html`${sections}${rest.length ? renderItems(rest) : ''}`;
+    const categories = new Map();
+    for (const item of rest) {
+      const category = (item.chore || item).display_category?.trim() || "";
+      if (!categories.has(category)) categories.set(category, []);
+      categories.get(category).push(item);
+    }
+    const otherSections = [...categories].map(([category, entries]) => {
+      const id = `category:${category}`;
+      const label = category || this._t("family.other_chores");
+      filters.push({ id, label });
+      if (selected !== "all" && selected !== id) return "";
+      return html`<section class="tm-category" aria-label=${label}>
+        <header><strong>${label}</strong><span>${entries.length}</span></header>
+        ${renderItems(entries)}</section>`;
+    });
+    // A category may disappear after a completion or an admin edit.
+    if (!filters.some(f => f.id === selected)) { this._displayFilter = "all"; return this._renderRoutineGroups(child, items, getId, renderItems, pointsIcon); }
+    return html`<div class="tm-filters" role="group" aria-label=${this._t("family.filter_chores")}>
+      ${filters.map(f => html`<button aria-pressed=${selected === f.id ? "true" : "false"}
+        @click=${() => { this._displayFilter = f.id; }}>${f.label}</button>`)}</div>
+      <div class="tm-groups">${sections}${otherSections}${!items.length ? renderItems([]) : ""}</div>`;
+  }
+
+  overviewData(child) {
+    const attrs = window.__taskmate_attrs?.(this.hass, this.config.entity) || this.hass.states[this.config.entity]?.attributes || {};
+    const chores = this._filterAndSortChores((attrs.chores || []).map(c => ({ ...c })), child);
+    const completions = this._filterCompletionsForToday(attrs.todays_completions || []);
+    const available = chore => attrs.chore_availability?.[chore.id]?.[child.id] !== false
+      && !chore._isLockedPreview && !chore._isDependencyBlocked && !chore._isRecurrenceLocked && !chore._isFirstComeLocked;
+    const submitted = chore => this._isChoreDone(chore, child, completions).done;
+    const routines = (child.routines || []).filter(r => r.members?.length).map(routine => {
+      const ids = new Set(routine.members.map(m => m.chore_id));
+      const candidates = routine.members.map(m => chores.find(c => c.id === m.chore_id)).filter(Boolean);
+      return { ...routine, next: candidates.find(c => !submitted(c) && available(c)),
+        submitted: candidates.filter(submitted).length, visible: chores.some(c => ids.has(c.id)) };
+    }).filter(r => r.visible || r.done || r.pending_count);
+    const routineIds = new Set((child.routines || []).flatMap(r => r.members.map(m => m.chore_id)));
+    const other = chores.filter(c => !routineIds.has(c.id) && !submitted(c) && available(c));
+    return { routines, other };
   }
 
   /** Designed header: avatar/title, remaining pill, pending-points chip. */

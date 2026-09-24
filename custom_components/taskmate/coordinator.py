@@ -893,11 +893,13 @@ class TaskMateCoordinator(
         unavailability_entity: str = "",
         pause_streak_when_unavailable: bool = False,
         linked_user_id: str = "",
+        color: str = "",
     ) -> Child:
         """Add a new child."""
         child = Child(
             name=name,
             avatar=avatar,
+            color=color,
             availability_entity=availability_entity,
             availability_inverted=availability_inverted,
             unavailability_entity=unavailability_entity,

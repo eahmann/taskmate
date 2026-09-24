@@ -791,6 +791,7 @@ class TaskMatePointsCard extends LitElement {
   }
 
   _av(child, tone, size) {
+    tone = window.__taskmate_design?.childColor?.(child, this.config.accent_color || this.config.header_color, tone) || tone;
     const a = this._childAvatarValue(child);
     const inner = a.startsWith("mdi:")
       ? html`<ha-icon icon="${a}"></ha-icon>`

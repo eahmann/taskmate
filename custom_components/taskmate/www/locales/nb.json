@@ -1865,5 +1865,21 @@
   "child_page.my_rewards": "Mine belønninger",
   "child_page.navigation": "Barnesider",
   "child_page.unavailable": "Informasjonen om dette barnet er utilgjengelig. Sjekk TaskMate-tilkoblingen og hvilket barn som er valgt.",
-  "child_page.select_child": "Velg et barn"
+  "child_page.select_child": "Velg et barn",
+  "panel.child_color_label": "Barnets farge",
+  "panel.child_color_hint": "Brukes i barnets grensesnitt med mindre et kort overstyrer den. Tilbakestilling bruker temafargen.",
+  "panel.child_color_reset": "Bruk temafargen",
+  "panel.chore_display_category_label": "Visningskategori",
+  "panel.chore_display_category_hint": "Valgfri overskrift for oppgaver, for eksempel Klesvask. Endrer ikke planlegging eller fordelingsgrupper.",
+  "family.routines": "Rutiner",
+  "family.other_chores": "Andre oppgaver",
+  "family.filter_chores": "Filtrer oppgaver",
+  "family.parents": "Foreldre",
+  "family.next": "Neste: {name}",
+  "family.none_ready": "Ingen trinn er klare akkurat nå",
+  "family.no_routines": "Ingen rutiner akkurat nå",
+  "family.other_available": "{count} andre oppgaver tilgjengelige",
+  "family.open_chores": "Åpne oppgaver",
+  "family.today": "I dag",
+  "family.routine_progress": "{done} av {total} påkrevde rutineoppgaver godkjent"
 }

@@ -562,7 +562,7 @@ class TaskMatePointsDisplayCard extends LitElement {
       show_weekly: true,
       show_rank: true,
       animate: true,
-      header_color: DEFAULT_HEADER,
+      header_color: undefined,
       ...config,
     };
   }
@@ -624,7 +624,7 @@ class TaskMatePointsDisplayCard extends LitElement {
   /* ── Render helpers ─────────────────────────────────────────────────── */
 
   _headerStyle() {
-    return `background: ${_safeColor(this.config.header_color, DEFAULT_HEADER)};`;
+    return `background: ${_safeColor(this.config.header_color, window.__taskmate_design?.cardColor?.(this.hass, this.config, DEFAULT_HEADER) || DEFAULT_HEADER)};`;
   }
 
   _defaultTitle() {
@@ -771,7 +771,7 @@ class TaskMatePointsDisplayCard extends LitElement {
       <div class="cumulative-wrap">
         <div class="cumulative-total">
           <div class="points-label">${this._t("points_display.combined_family_total")}</div>
-          <div class="points-number" style="color:${_safeColor(this.config.header_color, DEFAULT_HEADER)}">
+          <div class="points-number" style="color:${_safeColor(this.config.header_color, window.__taskmate_design?.cardColor?.(this.hass, this.config, DEFAULT_HEADER) || DEFAULT_HEADER)}">
             <span class="points-star">\u{1F31F}</span>${total.toLocaleString()}
           </div>
           <div class="secondary-info">
@@ -859,6 +859,7 @@ class TaskMatePointsDisplayCard extends LitElement {
   _designTone(i) { return `var(--tmd-c${(i % 6) + 1})`; }
 
   _av(child, tone, size) {
+    tone = window.__taskmate_design?.childColor?.(child, this.config.accent_color || this.config.header_color, tone) || tone;
     const a = child.avatar || "";
     const inner = a.startsWith("mdi:")
       ? html`<ha-icon icon="${a}"></ha-icon>`
@@ -871,7 +872,7 @@ class TaskMatePointsDisplayCard extends LitElement {
   _renderDesigned(design) {
     const mode  = this.config.mode || "single";
     const title = this.config.title || this._defaultTitle();
-    const hd    = _safeColor(this.config.header_color, DEFAULT_HEADER);
+    const hd    = _safeColor(this.config.header_color, window.__taskmate_design?.cardColor?.(this.hass, this.config, DEFAULT_HEADER) || DEFAULT_HEADER);
     const tz    = this.hass?.config?.time_zone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     let ranked = this._rankedChildren();

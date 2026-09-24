@@ -187,6 +187,7 @@ def _build_children_summary(coordinator: TaskMateCoordinator, common: dict) -> l
                 "total_points_earned": getattr(c, "total_points_earned", 0) or 0,
                 "total_chores_completed": getattr(c, "total_chores_completed", 0) or 0,
                 "avatar": getattr(c, "avatar", "mdi:account-circle") or "mdi:account-circle",
+                "color": c.color,
                 "last_completion_date": getattr(c, "last_completion_date", None),
                 "streak_paused": getattr(c, "streak_paused", False),
                 "on_vacation": coordinator._is_child_on_vacation(c),
@@ -242,6 +243,8 @@ def _build_chores_list(coordinator: TaskMateCoordinator, common: dict) -> list[d
             record["effective_points"] = effective_points
         # Optional fields — emit only when non-default to save bytes.
         description = getattr(c, "description", "") or ""
+        if c.display_category:
+            record["display_category"] = c.display_category
         if description:
             record["description"] = description
         daily_limit = getattr(c, "daily_limit", 1)
@@ -1158,6 +1161,7 @@ class ChildPointsSensor(TaskMateBaseSensor):
             "child_id": child.id,
             "child_name": child.name,
             "avatar": child.avatar,
+            "color": child.color,
             "total_points_earned": child.total_points_earned,
             "total_chores_completed": child.total_chores_completed,
             "current_streak": child.current_streak,
@@ -1229,6 +1233,7 @@ class ChildStatsSensor(TaskMateBaseSensor):
             "child_id": child.id,
             "child_name": child.name,
             "avatar": child.avatar,
+            "color": child.color,
             "points": child.points,
             "total_points_earned": child.total_points_earned,
             "total_chores_completed": child.total_chores_completed,

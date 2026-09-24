@@ -82,6 +82,8 @@ WS_REGISTERED: Final = "ws_registered"
 # --- command names ---------------------------------------------------------
 WS_GET_STATE: Final = "taskmate/get_state"
 
+_CHILD_COLOR = vol.All(str, vol.Match(r"^(#[0-9a-fA-F]{6})?$"))
+
 WS_ADD_CHILD: Final = "taskmate/add_child"
 WS_UPDATE_CHILD: Final = "taskmate/update_child"
 WS_REMOVE_CHILD: Final = "taskmate/remove_child"
@@ -426,6 +428,7 @@ async def _ws_get_state(hass, connection, msg, coordinator):
         vol.Required("type"): WS_ADD_CHILD,
         vol.Required("name"): vol.All(str, vol.Length(min=1, max=120)),
         vol.Optional("avatar", default="mdi:account-circle"): str,
+        vol.Optional("color", default=""): _CHILD_COLOR,
         vol.Optional("availability_entity", default=""): str,
         vol.Optional("availability_inverted", default=False): bool,
         vol.Optional("unavailability_entity", default=""): str,
@@ -439,6 +442,7 @@ async def _ws_add_child(hass, connection, msg, coordinator):
     child = await coordinator.async_add_child(
         name=msg["name"].strip(),
         avatar=msg.get("avatar") or "mdi:account-circle",
+        color=msg.get("color", ""),
         availability_entity=_opt_str(msg.get("availability_entity")),
         availability_inverted=bool(msg.get("availability_inverted", False)),
         unavailability_entity=_opt_str(msg.get("unavailability_entity")),
@@ -454,6 +458,7 @@ async def _ws_add_child(hass, connection, msg, coordinator):
         vol.Required("child_id"): str,
         vol.Optional("name"): vol.All(str, vol.Length(min=1, max=120)),
         vol.Optional("avatar"): str,
+        vol.Optional("color"): _CHILD_COLOR,
         vol.Optional("availability_entity"): str,
         vol.Optional("availability_inverted"): bool,
         vol.Optional("unavailability_entity"): str,
@@ -474,6 +479,8 @@ async def _ws_update_child(hass, connection, msg, coordinator):
         existing.name = msg["name"].strip()
     if "avatar" in msg:
         existing.avatar = msg["avatar"] or "mdi:account-circle"
+    if "color" in msg:
+        existing.color = msg["color"]
     if "availability_entity" in msg:
         existing.availability_entity = _opt_str(msg["availability_entity"])
     if "availability_inverted" in msg:
@@ -583,6 +590,7 @@ def _image_url_or_blank(value):
 # assignment_current_child_id, publish_calendar_published_dates, etc.) is
 # coordinator-managed runtime state and intentionally not exposed.
 _CHORE_EDITABLE_FIELDS = {
+    "display_category",
     "name",
     "description",
     "points",
@@ -639,6 +647,7 @@ def _chore_payload_schema(*, require_name: bool):
     name_field = vol.Required("name") if require_name else vol.Optional("name")
     return {
         name_field: vol.All(str, vol.Length(min=1, max=200)),
+        vol.Optional("display_category"): vol.All(str, str.strip, vol.Length(max=80)),
         vol.Optional("description"): str,
         vol.Optional("points"): vol.All(int, vol.Range(min=0)),
         vol.Optional("assigned_to"): [str],

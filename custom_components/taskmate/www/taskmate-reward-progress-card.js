@@ -706,6 +706,7 @@ class TaskMateRewardProgressCard extends LitElement {
   _designTone(i) { return `var(--tmd-c${(i % 6) + 1})`; }
 
   _av(child, tone, size) {
+    tone = window.__taskmate_design?.childColor?.(child, this.config.accent_color || this.config.header_color, tone) || tone;
     const a = (child && child.avatar) || "";
     const inner = a.startsWith("mdi:")
       ? html`<ha-icon icon="${a}"></ha-icon>`

@@ -21,7 +21,6 @@ views:
         view: chores
         chores_path: /YOUR_DASHBOARD/child
         rewards_path: /YOUR_DASHBOARD/child-rewards
-        accent_color: '#b885e3'
   - title: Child rewards
     path: child-rewards
     type: panel
@@ -32,7 +31,6 @@ views:
         view: rewards
         chores_path: /YOUR_DASHBOARD/child
         rewards_path: /YOUR_DASHBOARD/child-rewards
-        accent_color: '#b885e3'
 ```
 
 Optional `chore_options` and `reward_options` accept the corresponding card's
@@ -56,13 +54,48 @@ child_pages:
   - child_id: FIRST_CHILD_ID
     chores_path: /YOUR_DASHBOARD/first-child
     rewards_path: /YOUR_DASHBOARD/first-child-rewards
-    accent_color: '#b885e3'
   - child_id: SECOND_CHILD_ID
     chores_path: /YOUR_DASHBOARD/second-child
     rewards_path: /YOUR_DASHBOARD/second-child-rewards
-    accent_color: '#4ec9bb'
 ```
 
 The chooser closes after selection, on an outside tap, or with Escape. Keyboard
 users can open it with Enter/Space or an arrow key and move through its links with
 Tab or arrow keys. Omitting the list preserves a static child header.
+
+## Family overview and child colors
+
+Set **TaskMate → Children → Edit → Child color** once. Headers, child avatars,
+page navigation and routine accents inherit it. Reset returns to theme/card defaults.
+Existing explicit `header_color` values and page `accent_color` overrides take
+precedence. Remove old per-card colors to use the child's setting. Completion,
+approval and warning colors still communicate status.
+
+Add the family overview to a panel view. Link the navbar's Chores item directly
+to this view; it no longer needs a child submenu:
+
+```yaml
+type: custom:taskmate-family-page-card
+entity: sensor.taskmate_overview
+parents_path: /YOUR_DASHBOARD/parents
+child_pages:
+  - child_id: FIRST_CHILD_ID
+    chores_path: /YOUR_DASHBOARD/first-child
+    rewards_path: /YOUR_DASHBOARD/first-child-rewards
+  - child_id: SECOND_CHILD_ID
+    chores_path: /YOUR_DASHBOARD/second-child
+    rewards_path: /YOUR_DASHBOARD/second-child-rewards
+```
+
+The overview shows every currently applicable routine separately, with approved
+progress, pending status, and the next available step. Its Today total counts
+required routine chores only. Other available chores appear separately. Routine
+links open the child's page and focus that section; all sections remain expanded.
+The Parents link navigates to your existing protected route; it grants no privileges.
+
+**Chores → Edit → Display category** groups ordinary chores under headings such
+as Laundry. Categories are independent of assignment Groups and time periods.
+Routine membership takes precedence, so a chore never appears twice. Child pages
+show All, Routines and category filters. Routine panels and categories sit side by
+side on wide screens and stack on phones. Both new fields survive backup/restore;
+older data needs no migration and inherits the existing defaults.
