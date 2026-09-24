@@ -1737,6 +1737,12 @@ class TaskMateChildCard extends LitElement {
         background: transparent; border: 0; border-radius: 0; box-shadow: none; overflow: visible;
       }
       .tm-app > .tmd-hd { display: none; }
+      .tm-app .timer-btn.start, .tm-app .timer-btn.resume, .tm-app .photo-btn.primary {
+        background: var(--tm-child-color, var(--tm-page-accent));
+        color: var(--tm-child-on-color, var(--tm-page-on-accent, #111111));
+        box-shadow: none;
+      }
+      .tm-app .timer-btn:disabled { opacity: .55; cursor: not-allowed; }
       .tm-app .tmd-bd { padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px; }
       .tm-app.has-routines .tmd-section { display: none; }
       .tm-app .tm-groups { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }

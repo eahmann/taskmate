@@ -991,6 +991,10 @@ class TaskMateRewardsCard extends LitElement {
       .tm-app .rw-status { font-size: 14px; }
       .tm-app .btn { min-height: 48px; font: 750 16px var(--tmd-font-body); border-radius: 12px; padding: 12px 16px; }
       .tm-app .btn:disabled { opacity: .55; }
+      .tm-app .btn-confirm {
+        background: var(--tm-child-color, var(--tm-page-accent));
+        color: var(--tm-child-on-color, var(--tm-page-on-accent, #111111));
+      }
       .tm-app .rw-desc { color: var(--secondary-text-color); font-size: 14px; line-height: 1.5; max-width: 65ch; }
       .tm-app button:focus-visible { outline: 3px solid var(--primary-color); outline-offset: 3px; }
       @container reward-content (min-width: 800px) {
@@ -2128,7 +2132,7 @@ class TaskMateRewardsCard extends LitElement {
   _renderConfirmDialog(pointsIcon, pointsName) {
     if (!this._pendingClaim) return '';
     return html`
-      <div class="confirm-overlay" @click="${this._cancelClaim}">
+      <div class="confirm-overlay ${this.config.app_layout ? 'tm-app' : ''}" @click="${this._cancelClaim}">
         <div class="confirm-dialog" @click="${(e) => e.stopPropagation()}">
           <ha-icon class="dialog-icon" icon="mdi:gift-outline"></ha-icon>
           <div class="dialog-title">${this._t('rewards.confirm_title')}</div>
