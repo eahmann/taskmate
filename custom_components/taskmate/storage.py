@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from copy import deepcopy
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -408,6 +411,20 @@ class TaskMateStorage:
     def data_version(self) -> int:
         """Monotonic version of the in-memory data; bumped on each save."""
         return getattr(self, "_data_version", 0)
+
+    async def async_confirmed_save(self) -> None:
+        """Family commands require durable receipts, not a debounced write promise."""
+        if self.is_retired:
+            raise ValueError("TaskMate was reset; the write cannot proceed")
+        candidate = deepcopy(self._data)
+        self._data_version = getattr(self, "_data_version", 0) + 1
+        await self._store.async_save(candidate)
+
+        def readback():
+            return json.loads(Path(self._store.path).read_text(encoding="utf-8"))["data"]
+
+        if await self.hass.async_add_executor_job(readback) != candidate or self.is_retired:
+            raise ValueError("TaskMate command persistence could not be confirmed")
 
     @property
     def data(self) -> dict[str, Any]:

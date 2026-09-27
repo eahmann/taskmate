@@ -220,7 +220,7 @@ async def test_unload_reload_invalidates_previously_obtained_api(provider):
     assert (await _probe(provider))["authorized"] is True
 
 
-@pytest.mark.parametrize("protocol", [0, 2, True, "1"])
+@pytest.mark.parametrize("protocol", [0, 3, True, "1"])
 async def test_unknown_protocol_is_rejected(provider, protocol):
     with pytest.raises(FamilyAPIError) as caught:
         await async_get_family_api(provider.hass, "entry-1", protocol=protocol)
