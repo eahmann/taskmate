@@ -67,7 +67,22 @@ async def async_context_allows_child(hass: HomeAssistant, coordinator: Any, cont
     linked = getattr(child, "linked_user_id", "") if child else ""
     if linked == user_id:
         return True
-    if await async_user_is_admin(hass, user_id):
+    user = await hass.auth.async_get_user(user_id)
+    return user_allows_child(coordinator, user, child_id, user_id=user_id)
+
+
+def user_allows_child(coordinator: Any, user: Any, child_id: str, *, user_id: str | None = None) -> bool:
+    """Apply linked-child policy to an already freshly authenticated actor.
+
+    The family command boundary uses this synchronously after its final await.
+    Its caller separately verifies that the account is current and active.
+    """
+    user_id = user_id or (user.id if user else "")
+    if not user_id:
+        return False
+    child = coordinator.get_child(child_id) if coordinator else None
+    linked = getattr(child, "linked_user_id", "") if child else ""
+    if linked == user_id or (user is not None and user.is_admin):
         return True
     if linked:
         return False

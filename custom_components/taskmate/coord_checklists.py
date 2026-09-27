@@ -126,6 +126,8 @@ class ChecklistsMixin:
         checked: bool,
         photo_url: str = "",
         occurrence_id: str = "",
+        *,
+        _family_validate=None,
     ) -> dict:
         """Change one item, submitting exactly once when the last one is checked."""
         if not isinstance(checked, bool):
@@ -139,6 +141,8 @@ class ChecklistsMixin:
         # notifications, so two devices cannot both submit the last item.
         locks = self.__dict__.setdefault("_checklist_locks", {})
         async with locks.setdefault((chore_id, child_id), asyncio.Lock()):
+            if _family_validate is not None:
+                await _family_validate()
             chore = self.storage.get_chore(chore_id)
             if not chore or chore.task_type != "checklist":
                 raise ValueError("This chore is not a checklist")

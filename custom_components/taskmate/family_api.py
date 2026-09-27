@@ -1,6 +1,7 @@
-"""Versioned, in-process parent-access probe for a trusted companion backend.
+"""Versioned, in-process family API for a trusted companion backend.
 
-There is deliberately no service, WebSocket command, or mutation dispatcher.
+There is deliberately no public service or WebSocket command. Protocol 1 is
+the nonmutating probe; protocol 2 dispatch lives in family_workflows.py.
 The companion constructs a request from its authenticated HA connection and
 supplies a server-held verifier. That verifier must validate the exact request,
 live connection/session, policy, household, entry, and authorization reference;
@@ -10,6 +11,8 @@ boundary trusts installed backend code, never browser-supplied authority.
 
 from __future__ import annotations
 
+import asyncio
+import secrets
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -19,9 +22,19 @@ from .const import DOMAIN
 if TYPE_CHECKING:
     from homeassistant.core import Context, HomeAssistant
 
-PROTOCOL_VERSION = 1
-PROVIDER_VERSION = "5.6.1+eahmann.13"
+PROTOCOL_VERSION = 2
+SUPPORTED_PROTOCOLS = (1, 2)
+PROVIDER_VERSION = "5.6.1+eahmann.14"
 _OPERATION = "parent.probe"
+
+
+def __getattr__(name: str):
+    """Expose protocol 2's request without a circular module dependency."""
+    if name == "FamilyWorkflowRequest":
+        from .family_workflows import FamilyWorkflowRequest
+
+        return FamilyWorkflowRequest
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class FamilyAPIError(Exception):
@@ -65,6 +78,9 @@ class FamilyAccessRequest:
 @dataclass(slots=True)
 class _Lifetime:
     active: bool = True
+    nonce: str = field(default_factory=lambda: secrets.token_hex(16))
+    command_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    uncertain: bool = False
 
 
 def bind_family_api(coordinator: Any) -> None:
@@ -156,7 +172,7 @@ class FamilyAPI:
         self._check_user(user, user_id)
         return {
             "authorized": True,
-            "protocol": PROTOCOL_VERSION,
+            "protocol": 1,
             "provider_version": PROVIDER_VERSION,
             "entry_id": self._entry_id,
             "actor_user_id": user_id,
@@ -178,13 +194,18 @@ class FamilyAPI:
 
 async def async_get_family_api(hass: HomeAssistant, entry_id: str, protocol: int = 1) -> FamilyAPI:
     """Resolve exactly one active entry, never the first configured household."""
-    if type(protocol) is not int or protocol != PROTOCOL_VERSION:
-        raise FamilyAPIError("unsupported_protocol", "TaskMate family access requires protocol 1.")
+    if type(protocol) is not int or protocol not in SUPPORTED_PROTOCOLS:
+        raise FamilyAPIError("unsupported_protocol", "TaskMate family access supports protocols 1 and 2.")
     coordinator = hass.data.get(DOMAIN, {}).get(entry_id) if _identifier(entry_id) else None
     lifetime = getattr(coordinator, "_family_api_lifetime", None)
     if coordinator is None or not isinstance(lifetime, _Lifetime):
         raise FamilyAPIError("provider_unavailable", "This TaskMate entry does not have an active family access API.")
-    api = FamilyAPI(hass, entry_id, coordinator, lifetime)
+    if protocol == 2:
+        from .family_workflows import FamilyWorkflowAPI
+
+        api = FamilyWorkflowAPI(hass, entry_id, coordinator, lifetime)
+    else:
+        api = FamilyAPI(hass, entry_id, coordinator, lifetime)
     api._ensure_current()
     return api
 

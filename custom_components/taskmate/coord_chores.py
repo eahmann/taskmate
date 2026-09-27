@@ -82,6 +82,8 @@ class ChoresMixin:
         task_type: str = "standard",
         checklist_items: list[dict[str, str]] | None = None,
         open_ended: bool = False,
+        display_category: str = "",
+        enabled: bool = True,
     ) -> Chore:
         """Add a new chore."""
         # One-shot chores: force daily_limit=1, set created_date to today
@@ -136,6 +138,8 @@ class ChoresMixin:
             task_type=task_type,
             checklist_items=checklist_items or [],
             open_ended=open_ended,
+            display_category=display_category,
+            enabled=enabled,
         )
         validate_checklist_chore(chore)
         # Cache today's active child so the card can show it immediately
