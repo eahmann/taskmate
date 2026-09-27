@@ -18,7 +18,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service import async_set_service_schema
 from homeassistant.util import dt as dt_util
 
-from . import authz
+from . import authz, family_api
 from .const import (
     ATTR_AS_PARENT,
     ATTR_AWARDED_BADGE_ID,
@@ -205,6 +205,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _async_update_service_descriptions(hass)
     coordinator.async_add_listener(lambda: _async_update_service_descriptions(hass))
 
+    family_api.bind_family_api(coordinator)
     return True
 
 
@@ -212,6 +213,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     coordinator = hass.data[DOMAIN].get(entry.entry_id)
     if coordinator:
+        family_api.unbind_family_api(coordinator)
         if hasattr(coordinator, "_unsub_mobile_action") and coordinator._unsub_mobile_action:
             coordinator._unsub_mobile_action()
         await coordinator.async_shutdown()

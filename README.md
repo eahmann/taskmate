@@ -78,6 +78,8 @@ This hides and blocks the card's undo, complete-on-behalf, approval, points-adju
 
 The switch controls presentation, not backend authorization. Pair it with Dashboard Lock on parent views for a shared-screen PIN; the account retains its normal TaskMate and Home Assistant permissions.
 
+The fork also exposes a [parent-access probe for a trusted companion integration](FAMILY-ACCESS.md). Protocol 1 verifies a server-authorized request without reading household records or changing TaskMate data. It does not add management actions or change the existing account permissions.
+
 ### Daily flow
 
 1. **Create chores** — assign them to children, set point values and schedules
